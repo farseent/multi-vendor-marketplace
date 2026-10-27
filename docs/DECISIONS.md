@@ -47,3 +47,7 @@ Format: Decision · Alternatives · Reason · Verify?
 **D20 JavaScript (ESM) + Zod, not TypeScript.** Matches current stack; Zod gives runtime validation at boundaries. TypeScript can be adopted later; say if you want it from the start.
 
 **D21 Coupon reservation at checkout, redemption at payment.** Prevents a single-use coupon being used twice concurrently; released on expiry/cancel.
+
+**D22 ESLint pinned to major version 9.** Use ESLint `^9.0.0` (or the exact approved ESLint 9 version) for linting. Alt: upgrade automatically to a newer major version. Keeping ESLint on major version 9 avoids unplanned configuration and tooling changes. Verify the installed version and configuration compatibility.
+
+**D23 Environment loading via Node.js `--env-file`.** Start the backend using Node.js's built-in `--env-file` option to load environment variables from the selected environment file. Alt: load environment files through a separate library such as `dotenv`. This avoids an additional runtime dependency and keeps environment loading at the process startup level. Verify the startup scripts, required `NODE_ENV`, and behavior when environment files are missing.

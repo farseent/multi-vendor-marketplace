@@ -9,17 +9,18 @@ Base URL: `/api/v1`. JSON only (webhook uses raw body). Auth: `Authorization: Be
 **Pagination:** `?page=1&limit=20` (limit ≤ 100) → `"meta": { "page": 1, "limit": 20, "total": 134, "totalPages": 7 }`. Sort: `?sort=-createdAt`.
 **Headers:** `Idempotency-Key` (required on `POST /checkout`, optional on refunds), `X-Request-Id` returned on every response.
 
-| HTTP | code                                                                      | When                         |
-| ---- | ------------------------------------------------------------------------- | ---------------------------- |
-| 400  | `BAD_REQUEST`, `PAYMENT_VERIFICATION_FAILED`, `INVALID_WEBHOOK_SIGNATURE` | malformed / failed signature |
-| 401  | `UNAUTHENTICATED`, `TOKEN_EXPIRED`                                        | no/invalid token             |
-| 403  | `FORBIDDEN`, `VENDOR_NOT_APPROVED`, `ACCOUNT_SUSPENDED`                   | role/status                  |
-| 404  | `NOT_FOUND`                                                               | missing or not owned         |
-| 409  | `CONFLICT`, `OUT_OF_STOCK`, `INVALID_STATE_TRANSITION`, `REVIEW_EXISTS`   | state conflicts              |
-| 422  | `VALIDATION_ERROR`, `COUPON_INVALID`                                      | semantic validation          |
-| 429  | `RATE_LIMITED`                                                            | with `Retry-After`           |
-| 502  | `PAYMENT_PROVIDER_ERROR`                                                  | provider failure             |
-| 500  | `INTERNAL_ERROR`                                                          | unexpected                   |
+| HTTP | code                                                                      | When                                          |
+| ---- | ------------------------------------------------------------------------- | --------------------------------------------- |
+| 400  | `BAD_REQUEST`, `PAYMENT_VERIFICATION_FAILED`, `INVALID_WEBHOOK_SIGNATURE` | malformed / failed signature                  |
+| 401  | `UNAUTHENTICATED`, `TOKEN_EXPIRED`                                        | no/invalid token                              |
+| 403  | `FORBIDDEN`, `VENDOR_NOT_APPROVED`, `ACCOUNT_SUSPENDED`                   | role/status                                   |
+| 404  | `NOT_FOUND`                                                               | missing or not owned                          |
+| 409  | `CONFLICT`, `OUT_OF_STOCK`, `INVALID_STATE_TRANSITION`, `REVIEW_EXISTS`   | state conflicts                               |
+| 422  | `VALIDATION_ERROR`, `COUPON_INVALID`                                      | semantic validation                           |
+| 429  | `RATE_LIMITED`                                                            | with `Retry-After`                            |
+| 502  | `PAYMENT_PROVIDER_ERROR`                                                  | provider failure                              |
+| 500  | `INTERNAL_ERROR`                                                          | unexpected                                    |
+| 503  | `SERVICE_UNAVAILABLE`                                                     | service or dependency temporarily unavailable |
 
 ## 2. Endpoint inventory
 
@@ -44,13 +45,13 @@ Base URL: `/api/v1`. JSON only (webhook uses raw body). Auth: `Authorization: Be
 
 ### Public catalog and shops
 
-| Method | Path                         | Auth   | Notes                                                                                                 |
+| Method | Path | Auth | Notes |
 | ------ | ---------------------------- | ------ | ----------------------------------------------------------------------------------------------------- | ----- | ------ | ---------- | ------------------------- |
-| GET    | /categories                  | Public | cached tree                                                                                           |
-| GET    | /products/search             | Public | ES; params `q, categoryId, vendor (shopSlug), minPrice, maxPrice, minRating, inStock, sort (relevance | price | -price | -createdAt | -ratingAvg), page, limit` |
-| GET    | /products/:slug              | Public | cached                                                                                                |
-| GET    | /shops/:shopSlug             | Public | approved shops only                                                                                   |
-| GET    | /products/:productId/reviews | Public | published only, paginated                                                                             |
+| GET | /categories | Public | cached tree |
+| GET | /products/search | Public | ES; params `q, categoryId, vendor (shopSlug), minPrice, maxPrice, minRating, inStock, sort (relevance | price | -price | -createdAt | -ratingAvg), page, limit` |
+| GET | /products/:slug | Public | cached |
+| GET | /shops/:shopSlug | Public | approved shops only |
+| GET | /products/:productId/reviews | Public | published only, paginated |
 
 ### Cart and coupons
 
@@ -116,7 +117,8 @@ Base URL: `/api/v1`. JSON only (webhook uses raw body). Auth: `Authorization: Be
 | GET / POST     | /admin/reconciliation, /admin/reconciliation/run                          |                                                     |
 | GET            | /admin/analytics/overview, /sales-timeseries, /top-vendors, /top-products | cached 5 min                                        |
 | POST           | /admin/search/reindex                                                     |                                                     |
-| GET            | /health, /health/ready                                                    | Public                                              |
+| GET            | /health, /api/v1/health                                                   | Public                                              |
+| GET            | /health/ready, /api/v1/health/ready                                       | Public                                              |
 
 ## 3. Sub-order transition table
 
@@ -227,3 +229,27 @@ Request: `{ "amountPaise": 100000, "reason": "admin", "note": "Damaged item" }` 
 
 Request: `{ "rating": 5, "title": "Great fit", "body": "Fabric is lovely and true to size." }` → 201 review.
 Errors: 403 `FORBIDDEN` (no delivered purchase), 409 `REVIEW_EXISTS`.
+
+### GET /health/ready
+
+Public. Returns HTTP 200 when the service is ready to accept requests,
+or HTTP 503 when it is not ready.
+
+Success response (200):
+
+{
+"success": true,
+"data": {
+"status": "ready"
+}
+}
+
+Unavailable response (503):
+
+{
+"success": false,
+"error": {
+"code": "SERVICE_UNAVAILABLE",
+"message": "Service is not ready"
+}
+}

@@ -1,0 +1,68 @@
+:root {
+  --text: #1c1f23;
+  --muted: #5b6470;
+  --line: #d9dde3;
+  --link: #1d4ed8;
+  --ok: #15803d;
+  --bad: #b91c1c;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: var(--link);
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.page {
+  max-width: 44rem;
+  margin: 2rem auto;
+  padding: 0 1.5rem;
+}
+
+.components {
+  padding-left: 1.25rem;
+}
+
+.components .up {
+  color: var(--ok);
+}
+
+.components .down {
+  color: var(--bad);
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}

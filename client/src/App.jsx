@@ -1,9 +1,17 @@
-import './App.css'
+import { Route, Routes } from 'react-router-dom';
+import Layout from './components/Layout.jsx';
+import HomePage from './pages/HomePage.jsx';
+import NotFoundPage from './pages/NotFoundPage.jsx';
+import StatusPage from './pages/StatusPage.jsx';
 
-function App() {
+export default function App() {
   return (
-    <h1>Hello</h1>
-  )
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<HomePage />} />
+        <Route path="status" element={<StatusPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
+  );
 }
-
-export default App

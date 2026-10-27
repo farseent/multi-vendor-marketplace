@@ -1,0 +1,56 @@
+# Local infrastructure only. The API and the React app run on your machine (npm run dev:*).
+# Start and wait until every service is healthy:  docker compose up -d --wait
+name: marketplace
+
+services:
+  mongo:
+    image: mongo:7
+    # Transactions (orders + stock + coupons) need a replica set, even with a single node.
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    ports: ['27017:27017']
+    volumes: ['mongo-data:/data/db']
+    healthcheck:
+      # Initiates the replica set on first run; reports healthy only once this node is PRIMARY.
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { if (rs.status().myState === 1) quit(0); quit(1) } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}); quit(1) }"
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    ports: ['6379:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  elasticsearch:
+    # Keep the major version in step with the @elastic/elasticsearch client (8.x).
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false # local development only
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports: ['9200:9200']
+    volumes: ['es-data:/usr/share/elasticsearch/data']
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'curl -fs "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"',
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  mongo-data:
+  es-data:

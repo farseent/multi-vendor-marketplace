@@ -35,7 +35,7 @@ Single `role` field per user. Admin accounts are created only by a seed script.
 | Layer                    | Choice                                                                        |
 | ------------------------ | ----------------------------------------------------------------------------- |
 | Frontend                 | React (Vite), React Router, TanStack Query                                    |
-| Backend                  | Node.js (LTS), Express, ES modules                                            |
+| Backend                  | Node.js >= 22.9.0, Express, ES modules                                        |
 | DB                       | MongoDB (replica set, required for transactions) + Mongoose                   |
 | Search                   | Elasticsearch (official JS client)                                            |
 | Cache / rate limit store | Redis (ioredis)                                                               |
@@ -71,13 +71,14 @@ Modules: auth, users, shops, catalog (categories, products), uploads, search, ca
 ## 6. Conventions (single source of truth)
 
 - **Naming:** collections plural camelCase (`subOrders`); fields camelCase; enum values lowercase snake_case; routes kebab-case plural nouns under `/api/v1`; vendor-console routes under `/api/v1/vendor/*`, admin under `/api/v1/admin/*`.
+- **File naming:** Module files use the `<module>.<type>.js` convention, such as `auth.routes.js`, `auth.controller.js`, `auth.service.js`, `auth.model.js`, and `auth.validator.js`. Use the module name as the filename prefix and the component type as the suffix.
 - **IDs:** Mongo ObjectId internally; API returns `id` (string). Human-readable `orderNumber`, `subOrderNumber`, `invoiceNumber`.
 - **Money:** integer paise, fields end in `Paise`; currency always `"INR"` and stored on payment documents. Rates end in `Bps` (100 bps = 1%). Never floats.
 - **Time:** UTC, ISO-8601 strings in API; `createdAt/updatedAt` on every collection.
 - **Response envelope:** success `{ "success": true, "data": ..., "meta"?: ... }`; error `{ "success": false, "error": { "code", "message", "details"?, "requestId" } }`.
 - **Pagination:** `?page=1&limit=20` (max 100) → `meta: { page, limit, total, totalPages }`; sort via `?sort=-createdAt`.
 - **Layering:** routes → validator → controller (HTTP only) → service (business rules, transactions) → model. Controllers never touch models; services never touch `req/res`.
-- **Env/secrets:** backend only; validated at boot; `.env.example` committed, `.env` never.
+- **Env/secrets:** backend only; validated at boot; `NODE_ENV` is required and must be explicitly set to an allowed value (`development`, `test`, or `production`). `.env.example` committed, `.env` never.
 - **Git:** one branch per phase, conventional commits, PR checklist = phase acceptance criteria.
 
 ## 7. Glossary
