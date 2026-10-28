@@ -55,9 +55,9 @@ marketplace/
   client/                 # React app
   server/
     src/
-      config/             # env parsing (Zod), constants
+      config/             # env parsing (Zod), constants, auth configuration
       modules/<name>/     # routes, controller, service, model, validator, (search|cache helpers)
-      middleware/         # auth, rbac, validate, rateLimit, error, requestId
+      middleware/         # auth, rbac, validate, rateLimit, originCheck, error, requestId
       lib/                # db, redis, es, s3, logger, money, AppError
       providers/payment/  # PaymentProvider interface, razorpay, mockLedger
       jobs/               # reservationRelease, searchSync, settlementRelease, reconcile

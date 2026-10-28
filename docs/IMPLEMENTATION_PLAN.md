@@ -30,11 +30,11 @@ Acceptance:
 Scope: register/login/refresh/logout/me/change-password, refresh rotation with reuse detection, rate limits on auth, address CRUD, admin seed script, authorize middleware, frontend auth pages and protected routes.
 Acceptance:
 
-- Passwords stored as bcrypt hashes (cost ≥ 12); no endpoint ever returns `passwordHash` (test).
-- Access token expires at 15 min; refresh rotates; replaying an old refresh token revokes the family and returns 401 (test).
-- 11th login attempt in 15 min from the same IP+email returns 429.
-- A customer token calling any `/vendor/*` or `/admin/*` route returns 403 (route-table test over every registered route).
-- Duplicate email returns 409; weak password returns 422 with field details.
+- [x] Passwords stored as bcrypt hashes (cost ≥ 12); no endpoint ever returns `passwordHash` (test).
+- [x] Access token expires at 15 min; refresh rotates; replaying an old refresh token revokes the family and returns 401 (test).
+- [x] 11th login attempt in 15 min from the same IP+email returns 429.
+- [x] A customer token calling any `/vendor/*` or `/admin/*` route returns 403 (route-table test over every registered route). **Note:** This check is currently vacuous because Phase 2 has not yet registered vendor/admin routes. Add meaningful route coverage in Phase 2.
+- [x] Duplicate email returns 409; weak password returns 422 with field details.
 
 ## Phase 2: Vendors, catalog, uploads
 

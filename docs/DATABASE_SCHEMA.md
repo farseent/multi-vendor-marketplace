@@ -4,16 +4,16 @@ Conventions: Mongoose `timestamps: true`; `_id` ObjectId; money in `...Paise` in
 
 ## users
 
-| Field        | Type     | Rules                                                                                                       |
+| Field | Type | Rules |
 | ------------ | -------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------- | -------------------------- |
-| email        | String   | required, lowercase, unique, email format                                                                   |
-| passwordHash | String   | required, `select:false`                                                                                    |
-| name         | String   | required, 2-80                                                                                              |
-| phone        | String   | optional, E.164-ish regex                                                                                   |
-| role         | String   | enum `customer                                                                                              | vendor                       | admin`, default `customer` |
-| status       | String   | enum `active                                                                                                | suspended`, default `active` |
-| addresses[]  | embedded | max 5: `{ label, name, phone, line1, line2?, city, state, postalCode (6 digits), country:'IN', isDefault }` |
-| lastLoginAt  | Date     |                                                                                                             |
+| email | String | required, lowercase, unique, email format |
+| passwordHash | String | required, `select:false` |
+| name | String | required, 2-80 |
+| phone | String | optional, E.164-ish regex |
+| role | String | enum `customer                                                                                              | vendor                       | admin`, default `customer` |
+| status | String | enum `active                                                                                                | suspended`, default `active` |
+| addresses[] | embedded | max 5: `{ label, name, phone, line1, line2?, city, state, postalCode (6 digits), country:'IN', isDefault }` |
+| lastLoginAt | Date | |
 
 Indexes: `{email:1}` unique; `{role:1,status:1}`.
 
@@ -24,16 +24,16 @@ Indexes: `{tokenHash:1}` unique; `{userId:1}`; `{familyId:1}`; TTL on `{expiresA
 
 ## vendors (shops)
 
-| Field             | Type      | Rules                                                         |
+| Field | Type | Rules |
 | ----------------- | --------- | ------------------------------------------------------------- | -------- | -------- | ---------------------------------------------------- |
-| userId            | ref users | unique, role must be vendor                                   |
-| shopName          | String    | 3-60, required                                                |
-| shopSlug          | String    | unique, lowercase kebab                                       |
-| description       | String    | ≤ 1000                                                        |
-| logoKey           | String    | S3 key under own prefix                                       |
-| status            | String    | `pending                                                      | approved | rejected | suspended`, default `pending`                        |
-| commissionRateBps | Number    | nullable override, int 0-5000                                 |
-| payoutAccount     | embedded  | `{ provider:'razorpay', linkedAccountId?, status:'not_created | pending  | active   | failed', bankLast4? }` (no full bank numbers stored) |
+| userId | ref users | unique, role must be vendor |
+| shopName | String | 3-60, required |
+| shopSlug | String | unique, lowercase kebab |
+| description | String | ≤ 1000 |
+| logoKey | String | S3 key under own prefix |
+| status | String | `pending                                                      | approved | rejected | suspended`, default `pending` |
+| commissionRateBps | Number | nullable override, int 0-5000 |
+| payoutAccount | embedded | `{ provider:'razorpay', linkedAccountId?, status:'not_created | pending  | active   | failed', bankLast4? }` (no full bank numbers stored) |
 
 Indexes: `{userId:1}` unique; `{shopSlug:1}` unique; `{status:1}`.
 
@@ -44,23 +44,23 @@ Indexes: `{slug:1}` unique; `{parentId:1,sortOrder:1}`.
 
 ## products
 
-| Field               | Type               | Rules                                                  |
+| Field | Type | Rules |
 | ------------------- | ------------------ | ------------------------------------------------------ | ------ | -------- | ---------- |
-| vendorId            | ref vendors        | required                                               |
-| title               | String             | 3-150                                                  |
-| slug                | String             | unique (title + short id)                              |
-| description         | String             | ≤ 5000                                                 |
-| categoryId          | ref categories     | required, must be leaf-or-any active                   |
-| pricePaise          | Number             | int ≥ 100                                              |
-| compareAtPricePaise | Number             | optional, > pricePaise                                 |
-| sku                 | String             | unique per vendor                                      |
-| stockQty            | Number             | int ≥ 0                                                |
-| images[]            | `{ key, alt? }`    | 1-6 items, keys must start with `products/{vendorId}/` |
-| attributes          | Map<String,String> | ≤ 10 entries                                           |
-| status              | String             | `draft                                                 | active | archived | suspended` |
-| ratingAvg           | Number             | 0-5, default 0                                         |
-| ratingCount         | Number             | int ≥ 0                                                |
-| soldCount           | Number             | int ≥ 0                                                |
+| vendorId | ref vendors | required |
+| title | String | 3-150 |
+| slug | String | unique (title + short id) |
+| description | String | ≤ 5000 |
+| categoryId | ref categories | required, must be leaf-or-any active |
+| pricePaise | Number | int ≥ 100 |
+| compareAtPricePaise | Number | optional, > pricePaise |
+| sku | String | unique per vendor |
+| stockQty | Number | int ≥ 0 |
+| images[] | `{ key, alt? }` | 1-6 items, keys must start with `products/{vendorId}/` |
+| attributes | Map<String,String> | ≤ 10 entries |
+| status | String | `draft                                                 | active | archived | suspended` |
+| ratingAvg | Number | 0-5, default 0 |
+| ratingCount | Number | int ≥ 0 |
+| soldCount | Number | int ≥ 0 |
 
 Indexes: `{slug:1}` unique; `{vendorId:1,sku:1}` unique; `{vendorId:1,status:1,createdAt:-1}`; `{categoryId:1,status:1,pricePaise:1}`; text index `{title:'text',description:'text'}` (search fallback).
 Rule: a product is publicly visible only if `status='active'` and its vendor is `approved`.
@@ -71,44 +71,44 @@ Rule: a product is publicly visible only if `status='active'` and its vendor is 
 
 ## orders
 
-| Field                                                   | Type              | Rules                                                        |
+| Field | Type | Rules |
 | ------------------------------------------------------- | ----------------- | ------------------------------------------------------------ | ----------------------------------- | ---------------------------- | --------- | -------- |
-| orderNumber                                             | String            | unique `MP-YYYYMMDD-NNNNNN` (from `counters`)                |
-| customerId                                              | ref users         |                                                              |
-| status                                                  | String            | `pending_payment                                             | placed                              | completed                    | cancelled | expired` |
-| paymentStatus                                           | String            | `unpaid                                                      | paid                                | failed`                      |
-| refundStatus                                            | String            | `none                                                        | partial                             | full` (aggregate of refunds) |
-| currency                                                | String            | `INR`                                                        |
-| shippingAddress                                         | embedded snapshot | copy of address at checkout                                  |
-| subtotalPaise, discountPaise, shippingPaise, totalPaise | Number            | `total = subtotal - discount + shipping` (shipping 0 in MVP) |
-| coupon                                                  | embedded          | `{ couponId, code, fundedBy:'vendor                          | platform', discountPaise }` or null |
-| reservationExpiresAt                                    | Date              | set while `pending_payment`                                  |
-| idempotencyKey                                          | String            | unique per customer                                          |
-| paymentId                                               | ref payments      |                                                              |
-| placedAt                                                | Date              | set by markOrderPaid                                         |
+| orderNumber | String | unique `MP-YYYYMMDD-NNNNNN` (from `counters`) |
+| customerId | ref users | |
+| status | String | `pending_payment                                             | placed                              | completed                    | cancelled | expired` |
+| paymentStatus | String | `unpaid                                                      | paid                                | failed` |
+| refundStatus | String | `none                                                        | partial                             | full` (aggregate of refunds) |
+| currency | String | `INR` |
+| shippingAddress | embedded snapshot | copy of address at checkout |
+| subtotalPaise, discountPaise, shippingPaise, totalPaise | Number | `total = subtotal - discount + shipping` (shipping 0 in MVP) |
+| coupon | embedded | `{ couponId, code, fundedBy:'vendor                          | platform', discountPaise }` or null |
+| reservationExpiresAt | Date | set while `pending_payment` |
+| idempotencyKey | String | unique per customer |
+| paymentId | ref payments | |
+| placedAt | Date | set by markOrderPaid |
 
 Indexes: `{orderNumber:1}` unique; `{customerId:1,createdAt:-1}`; `{customerId:1,idempotencyKey:1}` unique; `{status:1,reservationExpiresAt:1}` (partial: status=pending_payment); `{createdAt:-1}`.
 
 ## subOrders
 
-| Field                           | Type                              | Rules                                                                                                           |
+| Field | Type | Rules |
 | ------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------- | --------------------------------------------- | --------- | ---------- |
-| subOrderNumber                  | String                            | `orderNumber-V{n}`                                                                                              |
-| orderId, customerId, vendorId   | refs                              |                                                                                                                 |
-| items[]                         | embedded snapshot                 | `{ productId, title, sku, imageKey, unitPricePaise, quantity, lineSubtotalPaise, discountPaise, lineNetPaise }` |
-| subtotalPaise                   | Number                            | sum of `lineSubtotalPaise`                                                                                      |
-| discountPaise                   | Number                            | allocated coupon discount                                                                                       |
-| shippingPaise                   | Number                            | 0 in MVP                                                                                                        |
-| customerTotalPaise              | Number                            | what the customer pays for this slice (`subtotal - discount + shipping`)                                        |
-| commission                      | embedded                          | `{ rateBps, rateSource:'vendor                                                                                  | category   | platform', amountPaise, basePaise }` snapshot |
-| vendorPayoutPaise               | Number                            | payout before refund adjustments                                                                                |
-| fulfillmentStatus               | String                            | `pending_payment                                                                                                | processing | shipped                                       | delivered | cancelled` |
-| refundStatus                    | String                            | `none                                                                                                           | pending    | partial                                       | full      | failed`    |
-| refundedPaise                   | Number                            | cumulative processed refunds                                                                                    |
-| stockRestored                   | Boolean                           | guard against double restock                                                                                    |
-| tracking                        | embedded                          | `{ carrier?, trackingNumber? }`                                                                                 |
-| statusHistory[]                 | `{ status, at, byUserId, note? }` | append-only                                                                                                     |
-| deliveredAt, returnWindowEndsAt | Date                              |                                                                                                                 |
+| subOrderNumber | String | `orderNumber-V{n}` |
+| orderId, customerId, vendorId | refs | |
+| items[] | embedded snapshot | `{ productId, title, sku, imageKey, unitPricePaise, quantity, lineSubtotalPaise, discountPaise, lineNetPaise }` |
+| subtotalPaise | Number | sum of `lineSubtotalPaise` |
+| discountPaise | Number | allocated coupon discount |
+| shippingPaise | Number | 0 in MVP |
+| customerTotalPaise | Number | what the customer pays for this slice (`subtotal - discount + shipping`) |
+| commission | embedded | `{ rateBps, rateSource:'vendor                                                                                  | category   | platform', amountPaise, basePaise }` snapshot |
+| vendorPayoutPaise | Number | payout before refund adjustments |
+| fulfillmentStatus | String | `pending_payment                                                                                                | processing | shipped                                       | delivered | cancelled` |
+| refundStatus | String | `none                                                                                                           | pending    | partial                                       | full      | failed` |
+| refundedPaise | Number | cumulative processed refunds |
+| stockRestored | Boolean | guard against double restock |
+| tracking | embedded | `{ carrier?, trackingNumber? }` |
+| statusHistory[] | `{ status, at, byUserId, note? }` | append-only |
+| deliveredAt, returnWindowEndsAt | Date | |
 
 Indexes: `{orderId:1}`; `{vendorId:1,fulfillmentStatus:1,createdAt:-1}`; `{customerId:1,createdAt:-1}`; `{subOrderNumber:1}` unique; `{returnWindowEndsAt:1}` (partial: delivered).
 Invariant: `sum(subOrders.customerTotalPaise) == order.totalPaise`.
@@ -132,17 +132,17 @@ Rule: `netPayoutPaise = grossPaise - commissionPaise - refundAdjustmentPaise`, f
 
 ## coupons
 
-| Field                               | Rules                                                     |
+| Field | Rules |
 | ----------------------------------- | --------------------------------------------------------- | --------- |
-| code                                | unique, uppercase `[A-Z0-9_-]{4,20}`                      |
-| scope                               | `platform` or `vendor`; vendor coupons require `vendorId` |
-| fundedBy                            | `platform` for platform scope; `vendor` for vendor scope  |
-| type, value                         | `percent` (1-90) or `fixed` (paise ≥ 100)                 |
-| minOrderPaise, maxDiscountPaise?    | ints                                                      |
-| startsAt, expiresAt                 | expiresAt > startsAt                                      |
-| usageLimitTotal?, usageLimitPerUser | ints ≥ 1                                                  |
-| usedCount                           | int, maintained atomically                                |
-| status                              | `active                                                   | disabled` |
+| code | unique, uppercase `[A-Z0-9_-]{4,20}` |
+| scope | `platform` or `vendor`; vendor coupons require `vendorId` |
+| fundedBy | `platform` for platform scope; `vendor` for vendor scope |
+| type, value | `percent` (1-90) or `fixed` (paise ≥ 100) |
+| minOrderPaise, maxDiscountPaise? | ints |
+| startsAt, expiresAt | expiresAt > startsAt |
+| usageLimitTotal?, usageLimitPerUser | ints ≥ 1 |
+| usedCount | int, maintained atomically |
+| status | `active                                                   | disabled` |
 
 Indexes: `{code:1}` unique; `{vendorId:1}`.
 

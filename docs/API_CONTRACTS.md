@@ -15,7 +15,7 @@ Base URL: `/api/v1`. JSON only (webhook uses raw body). Auth: `Authorization: Be
 | 401  | `UNAUTHENTICATED`, `TOKEN_EXPIRED`                                        | no/invalid token                              |
 | 403  | `FORBIDDEN`, `VENDOR_NOT_APPROVED`, `ACCOUNT_SUSPENDED`                   | role/status                                   |
 | 404  | `NOT_FOUND`                                                               | missing or not owned                          |
-| 409  | `CONFLICT`, `OUT_OF_STOCK`, `INVALID_STATE_TRANSITION`, `REVIEW_EXISTS`   | state conflicts                               |
+| 409  | `CONFLICT`, `OUT_OF_STOCK`, `INVALID_STATE_TRANSITION`, `REVIEW_EXISTS`   | state conflicts, including more than 5 customer addresses |
 | 422  | `VALIDATION_ERROR`, `COUPON_INVALID`                                      | semantic validation                           |
 | 429  | `RATE_LIMITED`                                                            | with `Retry-After`                            |
 | 502  | `PAYMENT_PROVIDER_ERROR`                                                  | provider failure                              |
@@ -31,17 +31,17 @@ Base URL: `/api/v1`. JSON only (webhook uses raw body). Auth: `Authorization: Be
 | POST   | /auth/register        | Public | creates customer                                     |
 | POST   | /auth/register-vendor | Public | creates user role=vendor (shop profile created next) |
 | POST   | /auth/login           | Public | returns access token, sets refresh cookie            |
-| POST   | /auth/refresh         | Cookie | rotates refresh token                                |
-| POST   | /auth/logout          | Cookie | revokes family                                       |
+| POST   | /auth/refresh         | Cookie | rotates refresh token; returns `{ user, accessToken }` |
+| POST   | /auth/logout          | Cookie | idempotent; revokes family; returns `{ loggedOut: true }` |
 | GET    | /auth/me              | Any    |                                                      |
-| POST   | /auth/change-password | Any    | revokes other sessions                               |
+| POST   | /auth/change-password | Any    | wrong `currentPassword` returns 422 `VALIDATION_ERROR` at `body.currentPassword`; revokes other sessions |
 
 ### Users
 
 | GET/PATCH    | /users/me                      | Any | name, phone |
 | ------------ | ------------------------------ | --- | ----------- |
-| GET/POST     | /users/me/addresses            | C   |             |
-| PATCH/DELETE | /users/me/addresses/:addressId | C   |             |
+| GET/POST     | /users/me/addresses            | C (customer-only) | maximum 5 addresses; POST returns 409 at the limit |
+| PATCH/DELETE | /users/me/addresses/:addressId | C (customer-only) | customer-owned addresses only |
 
 ### Public catalog and shops
 
@@ -131,6 +131,53 @@ Base URL: `/api/v1`. JSON only (webhook uses raw body). Auth: `Authorization: Be
 Request: `{ "name": "Asha K", "email": "asha@example.com", "password": "S3cure!pass99" }`
 Response 201: `{ "success": true, "data": { "user": { "id": "66f0...a1", "name": "Asha K", "email": "asha@example.com", "role": "customer" }, "accessToken": "eyJ..." } }`
 Password rule: 10-72 chars, at least one letter and one digit.
+
+### POST /auth/refresh
+
+Auth: refresh-token cookie.
+
+Response 200:
+
+```json
+{
+  "user": {
+    "id": "66f0...a1",
+    "name": "Asha K",
+    "email": "asha@example.com",
+    "role": "customer"
+  },
+  "accessToken": "eyJ..."
+}
+```
+
+The refresh token is rotated and returned as an httpOnly cookie. Reuse or expiry returns 401.
+
+### POST /auth/logout
+
+Auth: refresh-token cookie.
+
+Response 200:
+
+```json
+{
+  "loggedOut": true
+}
+```
+
+This endpoint is idempotent: repeating a logout request still returns a successful logged-out result.
+
+### POST /auth/change-password
+
+If `currentPassword` is incorrect, the endpoint returns HTTP 422 with a validation detail whose path is `body.currentPassword`.
+
+Example detail:
+
+```json
+{
+  "path": "body.currentPassword",
+  "message": "Current password is incorrect"
+}
+```
 
 ### POST /vendor/products
 
@@ -232,24 +279,6 @@ Errors: 403 `FORBIDDEN` (no delivered purchase), 409 `REVIEW_EXISTS`.
 
 ### GET /health/ready
 
-Public. Returns HTTP 200 when the service is ready to accept requests,
-or HTTP 503 when it is not ready.
+Public. Returns HTTP 200 when the service is ready to accept requests, or HTTP 503 when it is not ready.
 
-Success response (200):
-
-{
-"success": true,
-"data": {
-"status": "ready"
-}
-}
-
-Unavailable response (503):
-
-{
-"success": false,
-"error": {
-"code": "SERVICE_UNAVAILABLE",
-"message": "Service is not ready"
-}
-}
+**Response body:** The current `HANDOVER.md` documents these HTTP status codes but does not define a response JSON shape. Do not rely on the previous `{ "success": true, "data": { "status": "ready" } }` / `SERVICE_UNAVAILABLE` examples as the current contract. Update this section with the exact response bodies once confirmed from the implemented health route.

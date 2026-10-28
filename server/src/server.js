@@ -1,10 +1,13 @@
 import { createApp } from './app.js';
+import { buildAuthConfig } from './config/auth.js';
 import { parseEnv } from './config/env.js';
 import { connectMongo, disconnectMongo, pingMongo } from './lib/db.js';
 import { createEsClient, pingEs } from './lib/es.js';
 import { createLogger } from './lib/logger.js';
 import { createRedis, pingRedis } from './lib/redis.js';
+import { RefreshToken } from './modules/auth/auth.model.js';
 import { createHealthService } from './modules/health/health.service.js';
+import { User } from './modules/users/users.model.js';
 
 // Fail fast: a misconfigured instance must not start (exit code 1).
 let env;
@@ -22,6 +25,8 @@ const es = createEsClient({ url: env.ELASTICSEARCH_URL });
 async function main() {
   // Mongo is the source of truth, so it is required to boot. Redis and ES are not.
   await connectMongo({ uri: env.MONGODB_URI, logger });
+  // Unique indexes (email, tokenHash) must exist before we accept traffic.
+  await Promise.all([User.init(), RefreshToken.init()]);
 
   const healthService = createHealthService({
     logger,
@@ -37,6 +42,9 @@ async function main() {
     corsOrigins: env.CORS_ORIGINS,
     logger,
     healthService,
+    authConfig: buildAuthConfig(env),
+    redis,
+    trustProxy: env.TRUST_PROXY,
   });
   const server = app.listen(env.PORT, () => logger.info({ port: env.PORT }, 'API listening'));
 

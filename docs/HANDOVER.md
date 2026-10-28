@@ -1,73 +1,78 @@
 # HANDOVER.md
 
-## Current state (after Phase 0 — Foundations)
+## Current state (after Phase 1: Auth, users, RBAC)
 
-Phase 0 is implemented and awaiting review. Branch: `phase-0-foundations`. No Phase 1+ code exists.
+Phase 1 is implemented and awaiting review. Branch: `phase-1-auth`. No Phase 2+ code exists. Phase 0 content below is unchanged unless noted.
 
-- Monorepo (npm workspaces): `server/` (Express 5, ESM, JavaScript), `client/` (Vite + React 19, React Router, TanStack Query).
-- Server: Zod-validated env (fails to boot with exit 1), pino logging with redaction, request-ID, helmet, CORS allowlist, 100 kB JSON limit, central error handler (standard envelope), health endpoints, Mongo/Redis/ES clients, graceful shutdown.
-- Client: router shell (`/`, `/status`, 404), `apiFetch` wrapper that unwraps the envelope and throws `ApiError`, a status page that calls `/health/ready`.
-- Tooling: ESLint 9 + Prettier, Vitest (server + client), Docker Compose (Mongo replica set, Redis, Elasticsearch), GitHub Actions CI (lint, format check, test, build).
-- Tests: 37 server + 5 client, all passing locally. Docker Compose and the CI workflow have NOT been run (no Docker / GitHub in the build environment).
+- Auth: register / register-vendor / login / refresh (rotation + reuse detection) / logout / me / change-password. Access JWT (HS256, 15 min, claims `sub`, `role`) in memory on the client; opaque 256-bit refresh token in an httpOnly cookie (path `/api/v1/auth`), only its SHA-256 stored.
+- Users: `/users/me` (name, phone) and customer-only address CRUD (max 5, exactly one default).
+- RBAC: `authenticate`, `authorize(...roles)`, plus a structural guard in `app.js` gating `/api/v1/vendor/*` (role vendor) and `/api/v1/admin/*` (role admin).
+- Rate limits (Redis, falling back to per-process memory): global 300/15min/IP, login 10/15min per IP+email, register 5/h/IP (both register routes share it), change-password 10/15min/user.
+- Admin accounts: `npm run seed:admin -w server`.
+- Client: AuthProvider, ProtectedRoute, login/register/vendor-register/account pages, apiFetch with Bearer token and single-flight refresh.
+- Tests: server 111 and client 15 passing in a scratch rebuild (real mongod 7 via mongodb-memory-server). Your repo, Docker Compose and CI not yet run with Phase 1.
 
 ## Key decisions
 
-- Dependency injection: `createApp({nodeEnv, corsOrigins, logger, healthService})`, `createHealthService({checks, logger})`. Nothing reads `process.env` except `server.js`. Tests need no real infrastructure.
-- `NODE_ENV` is required (no default) so a production host cannot silently run in development mode. Stack traces appear only when `NODE_ENV=development`.
-- `.env` is loaded by `node --env-file-if-exists=.env` (no dotenv). Boot tests run `node src/server.js` directly, so a developer's local `.env` cannot affect them. Needs Node >= 22.9.
-- Mongo is required to boot (exit 1 if unreachable). Redis/ES failures are non-fatal; `/health/ready` reports them as `degraded`.
-- Health router is mounted at `/health` (probes) and `/api/v1/health` (SPA client).
-- ESLint pinned to v9: `eslint-plugin-react` does not yet support v10.
-- `@elastic/elasticsearch` pinned to 8.x to match the Elasticsearch 8.15 container.
-- Deferred from the ARCHITECTURE §2 middleware chain: rate limiting (needs Redis store, Phase 1), auth/RBAC (Phase 1), Zod `validate` middleware (Phase 1; error handler already maps `ZodError` to 422).
+- Module routers declare full paths relative to `/api/v1` with no nested routers; `app.set('apiRouters')` lets tests enumerate every route (`listApiRoutes` in tests/helpers.js).
+- Login limiter counts every attempt, not only failures. Suspended accounts get 403 only after the password verifies.
+- Refresh: atomic claim (`findOneAndUpdate` on `revokedAt: null`); reuse or a lost race revokes the whole family. `/auth/refresh` and `/auth/logout` reject a browser Origin that is not in CORS_ORIGINS.
+- Password: 10-72 chars (72 bytes for bcrypt), a letter and a digit. Bodies use `z.strictObject` (unknown keys -> 422). Validated values are on `req.valid`.
+- `BCRYPT_COST` env minimum is 12. Tests build the app with cost 4 for speed.
+- Refresh response is `{ user, accessToken }`, the same shape as login.
+- JWT carries no `vendorId` yet (vendor records arrive in Phase 2).
 
 ## Relevant files
 
-- `server/src/app.js`, `server.js`, `config/env.js`, `config/constants.js`
-- `server/src/lib/`: `AppError.js`, `logger.js`, `db.js`, `redis.js`, `es.js`, `timeout.js`
-- `server/src/middleware/`: `requestId.js`, `httpLogger.js`, `error.js`
-- `server/src/modules/health/`: `health.routes.js`, `health.controller.js`, `health.service.js`
-- `server/tests/`: `env`, `app`, `health`, `logger` tests + `helpers.js`
-- `client/src/lib/api.js`, `pages/`, `components/Layout.jsx`
-- `docker-compose.yml`, `.github/workflows/ci.yml`, `eslint.config.js`, `.prettierrc`
+- `server/src/modules/auth/`: model, tokens, validator, service, controller, routes
+- `server/src/modules/users/`: model, validator, service, controller, routes
+- `server/src/middleware/`: auth.js, rbac.js, validate.js, rateLimit.js, originCheck.js
+- `server/src/config/auth.js`, `config/env.js`, `config/constants.js`, `lib/password.js`, `scripts/seedAdmin.js`
+- `server/tests/`: auth, users, rbac, rateLimit, seedAdmin, password tests; `db.js` (in-memory replica set)
+- `client/src/auth/`, `client/src/pages/{Login,Register,Account}Page.jsx`, `client/src/lib/api.js`
 
 ## API changes
 
-| Method | Path                                    | Auth   | Notes                                                                             |
-| ------ | --------------------------------------- | ------ | --------------------------------------------------------------------------------- |
-| GET    | `/health`, `/api/v1/health`             | Public | Liveness: `data: { status: "ok", uptimeSeconds }`                                 |
-| GET    | `/health/ready`, `/api/v1/health/ready` | Public | `data: { status: "ok"\|"degraded", components: { mongo, redis, elasticsearch } }` |
+| Method       | Path                                      | Auth     | Notes                                                            |
+| ------------ | ----------------------------------------- | -------- | ---------------------------------------------------------------- |
+| POST         | `/auth/register`, `/auth/register-vendor` | Public   | 201 `{ user, accessToken }` + refresh cookie                     |
+| POST         | `/auth/login`                             | Public   | 200 same shape; 401 generic; 403 `ACCOUNT_SUSPENDED`; 429        |
+| POST         | `/auth/refresh`                           | Cookie   | 200 `{ user, accessToken }`, rotates cookie; 401 on reuse/expiry |
+| POST         | `/auth/logout`                            | Cookie   | idempotent; 200 `{ loggedOut: true }`                            |
+| GET          | `/auth/me`                                | Any      | `{ user }`                                                       |
+| POST         | `/auth/change-password`                   | Any      | 422 `body.currentPassword` if wrong; revokes other sessions      |
+| GET/PATCH    | `/users/me`                               | Any      | name, phone (null clears)                                        |
+| GET/POST     | `/users/me/addresses`                     | Customer | 409 at 5 addresses                                               |
+| PATCH/DELETE | `/users/me/addresses/:addressId`          | Customer | 404 if not yours; 422 malformed id                               |
 
-Each component: `{ status: "up"|"down", required, latencyMs? }`. If Mongo is down: 503 with error code `SERVICE_UNAVAILABLE` and `error.details = { status: "unavailable", components }`. Connection error text is never returned.
+New error codes in use: `UNAUTHENTICATED`, `TOKEN_EXPIRED`, `FORBIDDEN`, `ACCOUNT_SUSPENDED`, `RATE_LIMITED` (with `Retry-After`).
 
-New error codes: `SERVICE_UNAVAILABLE` (503). Error handler also maps: Zod -> 422 `VALIDATION_ERROR`, malformed/oversized JSON -> 400 `BAD_REQUEST`, Mongoose `ValidationError` -> 422, `CastError` -> 400, duplicate key 11000 -> 409 `CONFLICT`, unknown -> 500 `INTERNAL_ERROR`.
+Schema changes: new collections `users` (embedded addresses) and `refreshTokens` (TTL index on `expiresAt`), exactly as DATABASE_SCHEMA.md.
 
-Schema changes: none.
+## Environment variables (server/.env)
 
-## Environment variables (`server/.env`, see `server/.env.example`)
-
-| Variable            | Required | Notes                                                   |
-| ------------------- | -------- | ------------------------------------------------------- |
-| `NODE_ENV`          | yes      | `development` \| `test` \| `production`                 |
-| `MONGODB_URI`       | yes      | `mongodb://` or `mongodb+srv://`; must be a replica set |
-| `REDIS_URL`         | yes      | `redis://` or `rediss://`                               |
-| `ELASTICSEARCH_URL` | yes      | `http(s)://`                                            |
-| `CORS_ORIGINS`      | yes      | Comma-separated exact origins, no trailing slash        |
-| `PORT`              | no       | Default 4000                                            |
-| `LOG_LEVEL`         | no       | Default `info`                                          |
-
-Client (optional): `VITE_API_URL` (public values only). Default `/api/v1` via Vite proxy.
+| Variable                                                     | Required  | Notes                                             |
+| ------------------------------------------------------------ | --------- | ------------------------------------------------- |
+| `JWT_ACCESS_SECRET`                                          | yes       | 32+ chars                                         |
+| `REFRESH_TOKEN_TTL_DAYS`                                     | no        | default 30                                        |
+| `BCRYPT_COST`                                                | no        | default 12, minimum 12                            |
+| `COOKIE_SAME_SITE`                                           | no        | `lax` (default), `strict`, `none` (forces Secure) |
+| `TRUST_PROXY`                                                | no        | proxies in front of the API, default 0            |
+| `ADMIN_SEED_EMAIL`, `ADMIN_SEED_PASSWORD`, `ADMIN_SEED_NAME` | seed only | read by `seed:admin`, not by the API              |
 
 ## Known issues
 
-- Not verified in a real environment: `docker compose up`, the Mongo replica-set healthcheck, ES healthcheck, real Redis/ES/Mongo health pings, CI on GitHub.
-- Redis connection errors are logged at `warn` on every retry (max every 5 s) and can be noisy while Redis is down.
-- No `trust proxy` setting yet; needed before IP-based rate limiting behind a proxy (Phase 1/9).
-- `mongodb-memory-server` not installed yet (add in Phase 1 for model/transaction tests).
+- Suspended users' access tokens work for up to 15 minutes; other sessions' access tokens survive a password change for up to 15 minutes.
+- Two tabs refreshing at the same instant can trigger reuse detection and log the user out.
+- Concurrent address edits can raise a Mongoose VersionError (500).
+- Limiter waits up to 100 ms per request when Redis is down.
+- Not verified in a real environment: docker compose, CI, real Redis for the limiter, UI in a browser.
+- Phase 0 items still open: see the earlier list (Docker/CI unverified, noisy Redis warn logs).
 
-## Next-phase prerequisites (Phase 1: Auth, users, RBAC)
+## Next-phase prerequisites (Phase 2: Vendors, catalog, uploads)
 
-- Run the Phase 0 acceptance checks on your machine (README "Run locally").
-- Add env vars: JWT secret, access/refresh settings, bcrypt cost, admin seed credentials.
-- Add `mongodb-memory-server` (replica set mode) and the shared `validate` middleware.
-- Decide V5 early (frontend/backend domains: same parent domain or cross-site cookies).
+- Run Phase 1 checks locally (`npm run format && npm run lint && npm test`) and review.
+- Decide V5 (same parent domain vs cross-site cookies) before deployment.
+- Phase 2 adds `vendorId` to the JWT (or looks it up per request) and per-route approval checks (`VENDOR_NOT_APPROVED`).
+- S3 env vars and bucket CORS for presigned PUT; add `categories`, `products`, `vendors` models.
+- Vendor routes must be added in module routers under `/vendor/...`; the role guard already applies.

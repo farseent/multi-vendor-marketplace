@@ -20,7 +20,7 @@ const origins = z
       .min(1, 'at least one origin is required'),
   );
 
-// Every variable the Phase 0 backend needs. Later phases add their own (JWT, S3, Razorpay...).
+// Every variable the backend needs. Later phases add their own (S3, Razorpay...).
 // NODE_ENV has no default on purpose: a production host that forgets it must fail, not
 // silently run in development mode.
 const schema = z.object({
@@ -31,6 +31,18 @@ const schema = z.object({
   REDIS_URL: uri(['redis', 'rediss'], 'redis:// or rediss:// URL'),
   ELASTICSEARCH_URL: uri(['http', 'https'], 'http(s):// URL'),
   CORS_ORIGINS: origins,
+
+  // --- Phase 1: auth ---
+  // HS256 signing key for access tokens. Generate: node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+  JWT_ACCESS_SECRET: z.string().min(32, 'must be at least 32 characters'),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+  // Cost 12 is the project minimum (acceptance criteria); the env cannot lower it.
+  BCRYPT_COST: z.coerce.number().int().min(12).max(15).default(12),
+  // 'lax' for same parent domain; 'none' (forces Secure) for cross-site frontends (V5).
+  COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
+  // Number of reverse proxies in front of the API (0 = none). Needed for correct client IPs
+  // in IP-based rate limits behind Render/Railway/nginx etc.
+  TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
 });
 
 /**

@@ -9,6 +9,7 @@ const VALID = {
   REDIS_URL: 'redis://localhost:6379',
   ELASTICSEARCH_URL: 'http://localhost:9200',
   CORS_ORIGINS: 'http://localhost:5173, https://shop.example.com',
+  JWT_ACCESS_SECRET: 'unit-test-secret-unit-test-secret-1234',
 };
 const REQUIRED = Object.keys(VALID);
 const serverRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -21,6 +22,16 @@ describe('parseEnv', () => {
     expect(env.CORS_ORIGINS).toEqual(['http://localhost:5173', 'https://shop.example.com']);
   });
 
+  it('applies the Phase 1 auth defaults', () => {
+    const env = parseEnv(VALID);
+    expect(env).toMatchObject({
+      REFRESH_TOKEN_TTL_DAYS: 30,
+      BCRYPT_COST: 12,
+      COOKIE_SAME_SITE: 'lax',
+      TRUST_PROXY: 0,
+    });
+  });
+
   it.each([
     ['MONGODB_URI', 'postgres://x'],
     ['REDIS_URL', 'http://localhost'],
@@ -28,6 +39,11 @@ describe('parseEnv', () => {
     ['CORS_ORIGINS', 'http://localhost:5173/'],
     ['PORT', '70000'],
     ['NODE_ENV', 'staging'],
+    ['JWT_ACCESS_SECRET', 'too-short'],
+    ['BCRYPT_COST', '10'],
+    ['COOKIE_SAME_SITE', 'sometimes'],
+    ['REFRESH_TOKEN_TTL_DAYS', '0'],
+    ['TRUST_PROXY', '-1'],
   ])('rejects invalid %s', (key, value) => {
     expect(() => parseEnv({ ...VALID, [key]: value })).toThrow(key);
   });
@@ -39,6 +55,15 @@ describe('parseEnv', () => {
       parseEnv({ ...VALID, MONGODB_URI: secret });
     } catch (err) {
       expect(err.message).not.toContain('hunter2');
+    }
+  });
+
+  it('does not echo a rejected JWT secret', () => {
+    try {
+      parseEnv({ ...VALID, JWT_ACCESS_SECRET: 'short-secret-value' });
+    } catch (err) {
+      expect(err.message).toContain('JWT_ACCESS_SECRET');
+      expect(err.message).not.toContain('short-secret-value');
     }
   });
 });
