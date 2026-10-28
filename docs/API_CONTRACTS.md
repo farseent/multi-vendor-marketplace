@@ -9,39 +9,39 @@ Base URL: `/api/v1`. JSON only (webhook uses raw body). Auth: `Authorization: Be
 **Pagination:** `?page=1&limit=20` (limit ≤ 100) → `"meta": { "page": 1, "limit": 20, "total": 134, "totalPages": 7 }`. Sort: `?sort=-createdAt`.
 **Headers:** `Idempotency-Key` (required on `POST /checkout`, optional on refunds), `X-Request-Id` returned on every response.
 
-| HTTP | code                                                                      | When                                          |
-| ---- | ------------------------------------------------------------------------- | --------------------------------------------- |
-| 400  | `BAD_REQUEST`, `PAYMENT_VERIFICATION_FAILED`, `INVALID_WEBHOOK_SIGNATURE` | malformed / failed signature                  |
-| 401  | `UNAUTHENTICATED`, `TOKEN_EXPIRED`                                        | no/invalid token                              |
-| 403  | `FORBIDDEN`, `VENDOR_NOT_APPROVED`, `ACCOUNT_SUSPENDED`                   | role/status                                   |
-| 404  | `NOT_FOUND`                                                               | missing or not owned                          |
+| HTTP | code                                                                      | When                                                      |
+| ---- | ------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 400  | `BAD_REQUEST`, `PAYMENT_VERIFICATION_FAILED`, `INVALID_WEBHOOK_SIGNATURE` | malformed / failed signature                              |
+| 401  | `UNAUTHENTICATED`, `TOKEN_EXPIRED`                                        | no/invalid token                                          |
+| 403  | `FORBIDDEN`, `VENDOR_NOT_APPROVED`, `ACCOUNT_SUSPENDED`                   | role/status                                               |
+| 404  | `NOT_FOUND`                                                               | missing or not owned                                      |
 | 409  | `CONFLICT`, `OUT_OF_STOCK`, `INVALID_STATE_TRANSITION`, `REVIEW_EXISTS`   | state conflicts, including more than 5 customer addresses |
-| 422  | `VALIDATION_ERROR`, `COUPON_INVALID`                                      | semantic validation                           |
-| 429  | `RATE_LIMITED`                                                            | with `Retry-After`                            |
-| 502  | `PAYMENT_PROVIDER_ERROR`                                                  | provider failure                              |
-| 500  | `INTERNAL_ERROR`                                                          | unexpected                                    |
-| 503  | `SERVICE_UNAVAILABLE`                                                     | service or dependency temporarily unavailable |
+| 422  | `VALIDATION_ERROR`, `COUPON_INVALID`                                      | semantic validation                                       |
+| 429  | `RATE_LIMITED`                                                            | with `Retry-After`                                        |
+| 502  | `PAYMENT_PROVIDER_ERROR`                                                  | provider failure                                          |
+| 500  | `INTERNAL_ERROR`                                                          | unexpected                                                |
+| 503  | `SERVICE_UNAVAILABLE`                                                     | service or dependency temporarily unavailable             |
 
 ## 2. Endpoint inventory
 
 ### Auth
 
-| Method | Path                  | Auth   | Notes                                                |
-| ------ | --------------------- | ------ | ---------------------------------------------------- |
-| POST   | /auth/register        | Public | creates customer                                     |
-| POST   | /auth/register-vendor | Public | creates user role=vendor (shop profile created next) |
-| POST   | /auth/login           | Public | returns access token, sets refresh cookie            |
-| POST   | /auth/refresh         | Cookie | rotates refresh token; returns `{ user, accessToken }` |
-| POST   | /auth/logout          | Cookie | idempotent; revokes family; returns `{ loggedOut: true }` |
-| GET    | /auth/me              | Any    |                                                      |
+| Method | Path                  | Auth   | Notes                                                                                                    |
+| ------ | --------------------- | ------ | -------------------------------------------------------------------------------------------------------- |
+| POST   | /auth/register        | Public | creates customer                                                                                         |
+| POST   | /auth/register-vendor | Public | creates user role=vendor (shop profile created next)                                                     |
+| POST   | /auth/login           | Public | returns access token, sets refresh cookie                                                                |
+| POST   | /auth/refresh         | Cookie | rotates refresh token; returns `{ user, accessToken }`                                                   |
+| POST   | /auth/logout          | Cookie | idempotent; revokes family; returns `{ loggedOut: true }`                                                |
+| GET    | /auth/me              | Any    |                                                                                                          |
 | POST   | /auth/change-password | Any    | wrong `currentPassword` returns 422 `VALIDATION_ERROR` at `body.currentPassword`; revokes other sessions |
 
 ### Users
 
-| GET/PATCH    | /users/me                      | Any | name, phone |
-| ------------ | ------------------------------ | --- | ----------- |
+| GET/PATCH    | /users/me                      | Any               | name, phone                                        |
+| ------------ | ------------------------------ | ----------------- | -------------------------------------------------- |
 | GET/POST     | /users/me/addresses            | C (customer-only) | maximum 5 addresses; POST returns 409 at the limit |
-| PATCH/DELETE | /users/me/addresses/:addressId | C (customer-only) | customer-owned addresses only |
+| PATCH/DELETE | /users/me/addresses/:addressId | C (customer-only) | customer-owned addresses only                      |
 
 ### Public catalog and shops
 
