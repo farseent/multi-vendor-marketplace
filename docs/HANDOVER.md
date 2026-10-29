@@ -2,7 +2,7 @@
 
 ## Current state (after Phase 1: Auth, users, RBAC)
 
-Phase 1 is implemented and awaiting review. Branch: `phase-1-auth`. No Phase 2+ code exists. Phase 0 content below is unchanged unless noted.
+Phase 1 is implemented, tested, and verified. Branch: `phase-1-auth`. Phase 1 is ready for Phase 2 implementation. No Phase 2+ code exists.
 
 - Auth: register / register-vendor / login / refresh (rotation + reuse detection) / logout / me / change-password. Access JWT (HS256, 15 min, claims `sub`, `role`) in memory on the client; opaque 256-bit refresh token in an httpOnly cookie (path `/api/v1/auth`), only its SHA-256 stored.
 - Users: `/users/me` (name, phone) and customer-only address CRUD (max 5, exactly one default).
@@ -10,7 +10,8 @@ Phase 1 is implemented and awaiting review. Branch: `phase-1-auth`. No Phase 2+ 
 - Rate limits (Redis, falling back to per-process memory): global 300/15min/IP, login 10/15min per IP+email, register 5/h/IP (both register routes share it), change-password 10/15min/user.
 - Admin accounts: `npm run seed:admin -w server`.
 - Client: AuthProvider, ProtectedRoute, login/register/vendor-register/account pages, apiFetch with Bearer token and single-flight refresh.
-- Tests: server 111 and client 15 passing in a scratch rebuild (real mongod 7 via mongodb-memory-server). Your repo, Docker Compose and CI not yet run with Phase 1.
+- Tests: server 111 and client 15 passing. Phase 1 checks were run in the actual repository using `npm run format`, `npm run lint`, and `npm test`.
+- Verification: Docker Compose, CI, real Redis rate limiter, and UI in a browser have also been verified successfully.
 
 ## Key decisions
 
@@ -66,12 +67,10 @@ Schema changes: new collections `users` (embedded addresses) and `refreshTokens`
 - Two tabs refreshing at the same instant can trigger reuse detection and log the user out.
 - Concurrent address edits can raise a Mongoose VersionError (500).
 - Limiter waits up to 100 ms per request when Redis is down.
-- Not verified in a real environment: docker compose, CI, real Redis for the limiter, UI in a browser.
-- Phase 0 items still open: see the earlier list (Docker/CI unverified, noisy Redis warn logs).
 
 ## Next-phase prerequisites (Phase 2: Vendors, catalog, uploads)
 
-- Run Phase 1 checks locally (`npm run format && npm run lint && npm test`) and review.
+- Phase 1 checks have been run and verified. Review the results and approve Phase 1 before starting implementation.
 - Decide V5 (same parent domain vs cross-site cookies) before deployment.
 - Phase 2 adds `vendorId` to the JWT (or looks it up per request) and per-route approval checks (`VENDOR_NOT_APPROVED`).
 - S3 env vars and bucket CORS for presigned PUT; add `categories`, `products`, `vendors` models.
