@@ -82,47 +82,139 @@ Base URL: `/api/v1`. JSON only (webhook uses raw body). Auth: `Authorization: Be
 
 ### Vendor console (`V`)
 
-| GET/PATCH      | /vendor/profile                       | V (pending allowed) | shop profile                       |
-| -------------- | ------------------------------------- | ------------------- | ---------------------------------- |
-| POST           | /vendor/profile                       | role vendor         | create shop (once)                 |
-| POST           | /vendor/payout-account                | V                   | creates provider linked account    |
-| GET            | /vendor/payout-account                | V                   |                                    |
-| GET/POST       | /vendor/products                      | V                   | list own / create                  |
-| GET/PATCH      | /vendor/products/:productId           | V                   |                                    |
-| DELETE         | /vendor/products/:productId           | V                   | archives                           |
-| PATCH          | /vendor/products/:productId/stock     | V                   | `{ stockQty }`                     |
-| POST           | /vendor/uploads/presign               | V                   |                                    |
-| GET            | /vendor/sub-orders                    | V                   | filter `fulfillmentStatus`         |
-| GET            | /vendor/sub-orders/:subOrderId        | V                   |                                    |
-| PATCH          | /vendor/sub-orders/:subOrderId/status | V                   | transitions below                  |
-| GET            | /vendor/settlements                   | V                   |                                    |
-| GET            | /vendor/dashboard                     | V                   | sales, orders by status, low stock |
-| GET/POST/PATCH | /vendor/coupons(/:couponId)           | V                   | vendor-scope coupons               |
+| GET | /vendor/profile | V (pending allowed) | 404 `NOT_FOUND` until the shop profile exists |
+| POST | /vendor/profile | role vendor | create shop (once); body `{ shopName, description? }` |
+| PATCH | /vendor/profile | V (pending allowed) | body `{ shopName?, description?, logoKey? }`; `description: null` and `logoKey: null` clear those fields |
+| POST | /vendor/payout-account | V | creates provider linked account |
+| GET | /vendor/payout-account | V | |
+| GET/POST | /vendor/products | V | list own / create; POST `status` is `draft` (default) or `active` |
+| GET/PATCH | /vendor/products/:productId | V | PATCH does not accept `stockQty`; use `/stock` |
+| DELETE | /vendor/products/:productId | V | archives |
+| PATCH | /vendor/products/:productId/stock | V | `{ stockQty }` |
+| POST | /vendor/uploads/presign | V | body `{ contentType, sizeBytes }`; see upload contract below |
+| GET | /vendor/sub-orders | V | filter `fulfillmentStatus` |
+| GET | /vendor/sub-orders/:subOrderId | V | |
+| PATCH | /vendor/sub-orders/:subOrderId/status | V | transitions below |
+| GET | /vendor/settlements | V | |
+| GET | /vendor/dashboard | V | sales, orders by status, low stock |
+| GET/POST/PATCH | /vendor/coupons(/:couponId) | V | vendor-scope coupons |
 
 ### Admin (`A`)
 
-| GET            | /admin/vendors                                                            | filter by status                                    |
-| -------------- | ------------------------------------------------------------------------- | --------------------------------------------------- |
-| PATCH          | /admin/vendors/:vendorId/status                                           | approve / reject / suspend                          |
-| PATCH          | /admin/vendors/:vendorId/commission                                       | `{ commissionRateBps }`                             |
-| GET / PATCH    | /admin/users, /admin/users/:userId/status                                 | suspend/reactivate                                  |
-| GET/POST/PATCH | /admin/categories(/:categoryId)                                           |                                                     |
-| PATCH          | /admin/products/:productId/status                                         | suspend/restore                                     |
-| PATCH          | /admin/reviews/:reviewId/status                                           | hide/publish                                        |
-| GET/POST/PATCH | /admin/coupons(/:couponId)                                                | platform coupons                                    |
-| GET            | /admin/orders, /admin/orders/:orderId                                     |                                                     |
-| POST           | /admin/sub-orders/:subOrderId/refund                                      | `{ amountPaise?, reason, note }`, `Idempotency-Key` |
-| GET            | /admin/settlements                                                        | filter status/vendor                                |
-| POST           | /admin/settlements/:settlementId/release                                  | manual release (demo/test)                          |
-| GET / POST     | /admin/reconciliation, /admin/reconciliation/run                          |                                                     |
-| GET            | /admin/analytics/overview, /sales-timeseries, /top-vendors, /top-products | cached 5 min                                        |
-| POST           | /admin/search/reindex                                                     |                                                     |
-| GET            | /health, /api/v1/health                                                   | Public                                              |
-| GET            | /health/ready, /api/v1/health/ready                                       | Public                                              |
+| GET            | /admin/vendors                                                            | filter by status                                                                   |
+| -------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| PATCH          | /admin/vendors/:vendorId/status                                           | body `{ status }`; approve / reject / suspend; see vendor status transitions below |
+| PATCH          | /admin/vendors/:vendorId/commission                                       | `{ commissionRateBps }`; accepts `null`                                            |
+| GET / PATCH    | /admin/users, /admin/users/:userId/status                                 | suspend/reactivate                                                                 |
+| GET/POST/PATCH | /admin/categories(/:categoryId)                                           |                                                                                    |
+| PATCH          | /admin/products/:productId/status                                         | suspend/restore                                                                    |
+| PATCH          | /admin/reviews/:reviewId/status                                           | hide/publish                                                                       |
+| GET/POST/PATCH | /admin/coupons(/:couponId)                                                | platform coupons                                                                   |
+| GET            | /admin/orders, /admin/orders/:orderId                                     |                                                                                    |
+| POST           | /admin/sub-orders/:subOrderId/refund                                      | `{ amountPaise?, reason, note }`, `Idempotency-Key`                                |
+| GET            | /admin/settlements                                                        | filter status/vendor                                                               |
+| POST           | /admin/settlements/:settlementId/release                                  | manual release (demo/test)                                                         |
+| GET / POST     | /admin/reconciliation, /admin/reconciliation/run                          |                                                                                    |
+| GET            | /admin/analytics/overview, /sales-timeseries, /top-vendors, /top-products | cached 5 min                                                                       |
+| POST           | /admin/search/reindex                                                     |                                                                                    |
+| GET            | /health, /api/v1/health                                                   | Public                                                                             |
+| GET            | /health/ready, /api/v1/health/ready                                       | Public                                                                             |
 
 ## 3. Sub-order transition table
 
 `pending_payment → processing` (system only) · `processing → shipped` (V; body `{carrier, trackingNumber}`) · `shipped → delivered` (V) · `processing → cancelled` (V or C) · anything else → 409 `INVALID_STATE_TRANSITION`.
+
+### Vendor profile
+
+- `POST /vendor/profile` creates the vendor's shop profile. Request body: `{ "shopName": "Loom & Co", "description": "Handwoven essentials" }`. `description` is optional.
+- `PATCH /vendor/profile` updates the profile. Request body: `{ "shopName": "Loom & Co", "description": "Handwoven essentials", "logoKey": "shops/66f0...c3/logo.webp" }`. All fields are optional; `description: null` clears the description and `logoKey: null` clears the logo.
+- `GET /vendor/profile` returns 404 `NOT_FOUND` until the shop profile exists.
+
+### Vendor uploads
+
+`POST /vendor/uploads/presign` accepts:
+
+```json
+{
+  "contentType": "image/jpeg",
+  "sizeBytes": 1048576
+}
+```
+
+`contentType` must be one of `image/jpeg`, `image/png`, or `image/webp`. `sizeBytes` must be an integer from 1 through 5242880 inclusive.
+
+Response 201:
+
+```json
+{
+  "uploadUrl": "https://storage.example/...",
+  "method": "PUT",
+  "headers": { "Content-Type": "image/jpeg" },
+  "key": "uploads/66f0...c3/image.webp",
+  "publicUrl": "https://cdn.example/uploads/66f0...c3/image.webp",
+  "expiresInSeconds": 300
+}
+```
+
+Returns 503 `SERVICE_UNAVAILABLE` when S3 is not configured.
+
+### Public catalog response shapes
+
+`GET /categories` returns a category tree:
+
+```json
+[
+  {
+    "id": "66ef...d4",
+    "name": "Clothing",
+    "slug": "clothing",
+    "children": [{ "id": "66ef...d5", "name": "Kurtas", "slug": "kurtas" }]
+  }
+]
+```
+
+`GET /products/:slug` returns:
+
+```json
+{
+  "id": "66f1...b2",
+  "slug": "handloom-cotton-kurta-x7k2",
+  "title": "Handloom Cotton Kurta",
+  "description": "Soft handloom cotton...",
+  "categoryId": "66ef...d4",
+  "pricePaise": 149900,
+  "compareAtPricePaise": 179900,
+  "images": [{ "url": "https://cdn.example/products/kurta.webp", "alt": "Front view" }],
+  "attributes": { "fabric": "cotton" },
+  "ratingAvg": 4.6,
+  "ratingCount": 12,
+  "inStock": true,
+  "shop": { "name": "Loom & Co", "slug": "loom-co" },
+  "createdAt": "2026-10-25T10:00:00Z"
+}
+```
+
+### Vendor product creation and updates
+
+- `POST /vendor/products` accepts `status: "draft"` (the default when omitted) or `status: "active"`.
+- `PATCH /vendor/products/:productId` does not accept `stockQty`. Update stock only through `PATCH /vendor/products/:productId/stock` with `{ "stockQty": 25 }`.
+
+### Vendor shop prerequisite
+
+Vendor routes that require a shop profile return HTTP 403 with error code `FORBIDDEN` when the vendor's shop profile does not exist yet. This shop-prerequisite response is distinct from `GET /vendor/profile`, which returns 404 until the profile exists.
+
+### Vendor status transitions
+
+`PATCH /admin/vendors/:vendorId/status` accepts `{ "status": "approved" | "rejected" | "suspended" }`.
+
+| Current status | Allowed next status    |
+| -------------- | ---------------------- |
+| `pending`      | `approved`, `rejected` |
+| `approved`     | `suspended`            |
+| `suspended`    | `approved`             |
+| `rejected`     | none (terminal)        |
+
+Any transition not listed above returns 409 `INVALID_STATE_TRANSITION`.
 
 ## 4. Examples
 

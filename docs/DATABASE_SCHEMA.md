@@ -30,7 +30,7 @@ Indexes: `{tokenHash:1}` unique; `{userId:1}`; `{familyId:1}`; TTL on `{expiresA
 | shopName | String | 3-60, required |
 | shopSlug | String | unique, lowercase kebab |
 | description | String | ≤ 1000 |
-| logoKey | String | S3 key under own prefix |
+| logoKey | String | S3 key under `products/{vendorId}/` |
 | status | String | `pending                                                      | approved | rejected | suspended`, default `pending` |
 | commissionRateBps | Number | nullable override, int 0-5000 |
 | payoutAccount | embedded | `{ provider:'razorpay', linkedAccountId?, status:'not_created | pending  | active   | failed', bankLast4? }` (no full bank numbers stored) |
@@ -163,7 +163,7 @@ Indexes: `{code:1}` unique; `{vendorId:1}`.
 - `counters`: `{ _id:'orderNumber:YYYYMMDD' | 'invoice:YYYY', seq }` via `$inc` upsert.
 - `webhookEvents`: `provider, eventId (unique with provider), eventType, status: received|processed|failed|ignored, attempts, receivedAt, processedAt?, error?`; TTL 90 days on `receivedAt`.
 - `searchOutbox`: `productId, op:'upsert|delete', attempts, nextAttemptAt, lastError?, createdAt`; index `{nextAttemptAt:1}`.
-- `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; index `{entityType:1,entityId:1,createdAt:-1}`.
+- `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; written by admin mutations for `vendor.status_changed`, `vendor.commission_changed`, `category.created`, and `category.updated`; index `{entityType:1,entityId:1,createdAt:-1}`.
 - `reconciliationReports`: `runAt, totals{...}, mismatches[], status`.
 - `jobLocks`: `{ _id: jobName, lockedUntil, owner }`.
 

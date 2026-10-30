@@ -1,77 +1,99 @@
 # HANDOVER.md
 
-## Current state (after Phase 1: Auth, users, RBAC)
+## Current state (after Phase 2: Vendors, catalog, uploads)
 
-Phase 1 is implemented, tested, and verified. Branch: `phase-1-auth`. Phase 1 is ready for Phase 2 implementation. No Phase 2+ code exists.
+Phase 2 is implemented and its tests pass (see "Verification" for exactly what was and was not run). Branch: `phase-2-vendors-catalog`. No Phase 3+ code exists. Phase 1 (auth, users, RBAC) is unchanged except for the additions listed below.
 
-- Auth: register / register-vendor / login / refresh (rotation + reuse detection) / logout / me / change-password. Access JWT (HS256, 15 min, claims `sub`, `role`) in memory on the client; opaque 256-bit refresh token in an httpOnly cookie (path `/api/v1/auth`), only its SHA-256 stored.
-- Users: `/users/me` (name, phone) and customer-only address CRUD (max 5, exactly one default).
-- RBAC: `authenticate`, `authorize(...roles)`, plus a structural guard in `app.js` gating `/api/v1/vendor/*` (role vendor) and `/api/v1/admin/*` (role admin).
-- Rate limits (Redis, falling back to per-process memory): global 300/15min/IP, login 10/15min per IP+email, register 5/h/IP (both register routes share it), change-password 10/15min/user.
-- Admin accounts: `npm run seed:admin -w server`.
-- Client: AuthProvider, ProtectedRoute, login/register/vendor-register/account pages, apiFetch with Bearer token and single-flight refresh.
-- Tests: server 111 and client 15 passing. Phase 1 checks were run in the actual repository using `npm run format`, `npm run lint`, and `npm test`.
-- Verification: Docker Compose, CI, real Redis rate limiter, and UI in a browser have also been verified successfully.
+- **Shops:** a vendor user creates one shop (`POST /vendor/profile`, status `pending`, slug derived from the name and kept stable). Admins list vendors, approve / reject / suspend (transition table, 409 otherwise) and set a commission override (0-5000 bps, `null` clears it). Public `GET /shops/:shopSlug` answers only for `approved` shops and returns no private fields.
+- **Categories:** admin create/list/update, two levels max, unique slug. Public `GET /categories` returns the tree of active categories (not cached yet).
+- **Products:** vendor CRUD under `/vendor/products`, every query scoped by the vendor id taken from the shop record (never from body, params or token). Another vendor's product is `404` for GET, PATCH, DELETE and stock. `DELETE` archives. Stock is changed only through `PATCH .../stock` (absolute set). Setting `status: active` needs an approved shop (`403 VENDOR_NOT_APPROVED`). Public `GET /products/:slug` returns only `active` products of `approved` shops, through an explicit allow-list of fields (no `stockQty`, `sku`, `vendorId`).
+- **Uploads:** `POST /vendor/uploads/presign` returns a short-lived presigned PUT URL for `products/{vendorId}/{uuid}.{jpg|png|webp}`. Type and exact size are part of the signature. Product images and shop logos must use keys inside the vendor's own prefix (422 otherwise). Without `S3_BUCKET` the API still boots and presign answers 503.
+- **Audit:** every admin mutation added in this phase writes an `auditLogs` entry (vendor status, commission, category create/update).
+- **Client:** `/vendor/shop` (create/edit shop, status banner), `/vendor/products` (list, filter, paginate, archive), `/vendor/products/new` and `/vendor/products/:productId` (form, image upload, separate stock form), public `/products/:slug`. Prices are typed in rupees and converted to integer paise with string math (`lib/money.js`). Role-gated routes are UX only; the API enforces roles.
+- **Not in Phase 2 (by plan):** search, Redis caching, admin console UI (approve vendors via API for now), payout account, admin product moderation, vendor dashboard.
 
 ## Key decisions
 
-- Module routers declare full paths relative to `/api/v1` with no nested routers; `app.set('apiRouters')` lets tests enumerate every route (`listApiRoutes` in tests/helpers.js).
-- Login limiter counts every attempt, not only failures. Suspended accounts get 403 only after the password verifies.
-- Refresh: atomic claim (`findOneAndUpdate` on `revokedAt: null`); reuse or a lost race revokes the whole family. `/auth/refresh` and `/auth/logout` reject a browser Origin that is not in CORS_ORIGINS.
-- Password: 10-72 chars (72 bytes for bcrypt), a letter and a digit. Bodies use `z.strictObject` (unknown keys -> 422). Validated values are on `req.valid`.
-- `BCRYPT_COST` env minimum is 12. Tests build the app with cost 4 for speed.
-- Refresh response is `{ user, accessToken }`, the same shape as login.
-- JWT carries no `vendorId` yet (vendor records arrive in Phase 2).
+- **D28 Vendor identity is looked up per request.** `middleware/shop.js` (`loadShop`) finds the shop by `req.user.id` and sets `req.vendor = { id, status }`. The JWT is unchanged (no `vendorId` claim), so approval or suspension applies immediately instead of after 15 minutes. Cost: one indexed query per vendor request. A vendor without a shop gets `403 FORBIDDEN` on product and upload routes.
+- **D29 S3 is optional at boot.** `S3_BUCKET` / `S3_REGION` / `S3_PUBLIC_BASE_URL` are optional; presign answers `503 SERVICE_UNAVAILABLE` and image URLs are `null` when unset. Tests inject a fake storage object with the same two functions (`presignPut`, `publicUrl`).
+- **D30 Admin mutations are audited from now on** (ARCHITECTURE section 6), via `modules/audit`. Phase 8 only has to add coverage for the later admin routes.
+- **D31 Stock is not editable through product PATCH** (strict body rejects it); only `PATCH /vendor/products/:id/stock`, an atomic absolute set scoped to the owner. A form save can therefore never overwrite newer stock.
+- **D32 Shop logos use the same `products/{vendorId}/` prefix as product images,** so the bucket needs a single public-read rule. A logo can only be set via PATCH after the shop exists (the prefix contains the vendor id).
+- Pending shops may create draft products and use presign (drafts need images). Only publishing needs approval. Suspended or rejected shops cannot publish; their active products are invisible publicly because the public query also requires an approved shop.
+- A product suspended by an admin cannot be restored or archived by its vendor (409 `INVALID_STATE_TRANSITION`); other fields stay editable.
+- Module naming: shops model lives in `modules/shops` (collection `vendors`); `modules/catalog` holds two sub-modules, `categories.*` and `products.*`.
+- Vendor status transitions: `pending -> approved|rejected`, `approved -> suspended`, `suspended -> approved`, `rejected -> approved`. Applied with a conditional update so two admins cannot both win.
+- Mongoose 9: use `returnDocument: 'after'` (not `new: true`) in `findOneAndUpdate`.
 
 ## Relevant files
 
-- `server/src/modules/auth/`: model, tokens, validator, service, controller, routes
-- `server/src/modules/users/`: model, validator, service, controller, routes
-- `server/src/middleware/`: auth.js, rbac.js, validate.js, rateLimit.js, originCheck.js
-- `server/src/config/auth.js`, `config/env.js`, `config/constants.js`, `lib/password.js`, `scripts/seedAdmin.js`
-- `server/tests/`: auth, users, rbac, rateLimit, seedAdmin, password tests; `db.js` (in-memory replica set)
-- `client/src/auth/`, `client/src/pages/{Login,Register,Account}Page.jsx`, `client/src/lib/api.js`
+- `server/src/modules/shops/` (model, validator, service, controller, routes), `modules/catalog/` (`categories.*`, `products.*`), `modules/uploads/`, `modules/audit/`
+- `server/src/middleware/shop.js` (loadShop), `rateLimit.js` (new `presign` limiter)
+- `server/src/lib/`: `s3.js`, `slug.js`, `pagination.js`, `uploadKeys.js`
+- `server/src/config/constants.js` (Phase 2 constants, `VENDOR_TRANSITIONS`, `UPLOAD`), `config/env.js` (S3 vars), `app.js`, `server.js` (storage + index init)
+- `server/tests/`: `shops`, `catalog`, `uploads`, `phase2.unit` tests; `factories.js`; `db.js`, `helpers.js` (`fakeStorage`), `rbac.test.js` updated
+- `client/src/pages/` (`VendorShopPage`, `VendorProductsPage`, `VendorProductFormPage`, `ProductPage`, `catalog.css`), `components/ImageUploader.jsx`, `lib/money.js`, `lib/uploads.js`
 
 ## API changes
 
-| Method       | Path                                      | Auth     | Notes                                                            |
-| ------------ | ----------------------------------------- | -------- | ---------------------------------------------------------------- |
-| POST         | `/auth/register`, `/auth/register-vendor` | Public   | 201 `{ user, accessToken }` + refresh cookie                     |
-| POST         | `/auth/login`                             | Public   | 200 same shape; 401 generic; 403 `ACCOUNT_SUSPENDED`; 429        |
-| POST         | `/auth/refresh`                           | Cookie   | 200 `{ user, accessToken }`, rotates cookie; 401 on reuse/expiry |
-| POST         | `/auth/logout`                            | Cookie   | idempotent; 200 `{ loggedOut: true }`                            |
-| GET          | `/auth/me`                                | Any      | `{ user }`                                                       |
-| POST         | `/auth/change-password`                   | Any      | 422 `body.currentPassword` if wrong; revokes other sessions      |
-| GET/PATCH    | `/users/me`                               | Any      | name, phone (null clears)                                        |
-| GET/POST     | `/users/me/addresses`                     | Customer | 409 at 5 addresses                                               |
-| PATCH/DELETE | `/users/me/addresses/:addressId`          | Customer | 404 if not yours; 422 malformed id                               |
+| Method               | Path                                  | Auth          | Notes                                                                                                                  |
+| -------------------- | ------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| GET                  | `/categories`                         | Public        | tree `[{ id, name, slug, children }]`, active only                                                                     |
+| GET                  | `/products/:slug`                     | Public        | active product of approved shop; else 404. Phase 3: register `/products/search` BEFORE this route                      |
+| GET                  | `/shops/:shopSlug`                    | Public        | approved only; `{ id, shopName, shopSlug, description, logoUrl }`                                                      |
+| GET / POST / PATCH   | `/vendor/profile`                     | Vendor        | GET 404 until created; POST 201 once (409 after); PATCH `shopName`, `description`, `logoKey` (null clears)             |
+| GET / POST           | `/vendor/products`                    | Vendor + shop | list `?status&sort&page&limit`; create (default `status: draft`)                                                       |
+| GET / PATCH / DELETE | `/vendor/products/:productId`         | Vendor + shop | 404 if not owned; DELETE archives (idempotent)                                                                         |
+| PATCH                | `/vendor/products/:productId/stock`   | Vendor + shop | `{ stockQty }` integer 0..1,000,000                                                                                    |
+| POST                 | `/vendor/uploads/presign`             | Vendor + shop | `{ contentType, sizeBytes }` -> 201 `{ uploadUrl, method, headers, key, publicUrl, expiresInSeconds }`; 30/hour/vendor |
+| GET                  | `/admin/vendors`                      | Admin         | `?status&page&limit`, includes `owner { id, name, email }`                                                             |
+| PATCH                | `/admin/vendors/:vendorId/status`     | Admin         | `{ status: approved\|rejected\|suspended }`                                                                            |
+| PATCH                | `/admin/vendors/:vendorId/commission` | Admin         | `{ commissionRateBps: 0..5000 \| null }`                                                                               |
+| GET / POST           | `/admin/categories`                   | Admin         | flat list incl. inactive / create                                                                                      |
+| PATCH                | `/admin/categories/:categoryId`       | Admin         | partial update                                                                                                         |
 
-New error codes in use: `UNAUTHENTICATED`, `TOKEN_EXPIRED`, `FORBIDDEN`, `ACCOUNT_SUSPENDED`, `RATE_LIMITED` (with `Retry-After`).
+Error codes used: `VENDOR_NOT_APPROVED` (403), `INVALID_STATE_TRANSITION` (409), `SERVICE_UNAVAILABLE` (503), plus existing ones. Product images in vendor responses carry `{ key, alt?, url }`.
 
-Schema changes: new collections `users` (embedded addresses) and `refreshTokens` (TTL index on `expiresAt`), exactly as DATABASE_SCHEMA.md.
+Schema changes: new collections `vendors`, `categories`, `products`, `auditLogs`, exactly as DATABASE_SCHEMA.md (indexes created by `Model.init()` at boot). No changes to `users` / `refreshTokens`.
 
 ## Environment variables (server/.env)
 
-| Variable                                                     | Required  | Notes                                             |
-| ------------------------------------------------------------ | --------- | ------------------------------------------------- |
-| `JWT_ACCESS_SECRET`                                          | yes       | 32+ chars                                         |
-| `REFRESH_TOKEN_TTL_DAYS`                                     | no        | default 30                                        |
-| `BCRYPT_COST`                                                | no        | default 12, minimum 12                            |
-| `COOKIE_SAME_SITE`                                           | no        | `lax` (default), `strict`, `none` (forces Secure) |
-| `TRUST_PROXY`                                                | no        | proxies in front of the API, default 0            |
-| `ADMIN_SEED_EMAIL`, `ADMIN_SEED_PASSWORD`, `ADMIN_SEED_NAME` | seed only | read by `seed:admin`, not by the API              |
+| Variable                                     | Required                | Notes                                                                           |
+| -------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------- |
+| `S3_BUCKET`                                  | no                      | enables uploads; without it presign answers 503                                 |
+| `S3_REGION`                                  | only if `S3_BUCKET` set | e.g. `ap-south-1`                                                               |
+| `S3_PUBLIC_BASE_URL`                         | no                      | CDN / base URL for images; default `https://<bucket>.s3.<region>.amazonaws.com` |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | when uploads are used   | standard AWS variables read by the SDK; never commit, never in the frontend     |
+
+New dependencies (server): `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`. Run `npm install` at the repo root to refresh `package-lock.json`.
+
+S3 bucket setup (not yet exercised against real AWS): block public listing; allow public `GetObject` only on `products/*`; CORS must allow `PUT` from the frontend origin with header `Content-Type`.
+
+## Dev workflow for approving a vendor (no admin UI yet)
+
+1. `npm run seed:admin -w server`, then log in as the admin (`POST /api/v1/auth/login`) to get an access token.
+2. `GET /api/v1/admin/vendors?status=pending` to find the shop id.
+3. `PATCH /api/v1/admin/vendors/<id>/status` with `{ "status": "approved" }`.
+4. Create at least one category: `POST /api/v1/admin/categories` with `{ "name": "Clothing" }`.
+
+## Verification
+
+Run in a reconstructed copy of the repo with a real MongoDB 8.3.7 (replica set via mongodb-memory-server, system binary): 148 server tests passing (new: shops 15, catalog 41, uploads 19, unit 20; plus the existing `users` and updated `rbac` suites); 32 client tests passing (new: money 22, uploads 2; plus `access`); `vite build` succeeded. A real `createStorage` call produced a URL whose signature covers `content-length` and `content-type`. Not run: the other Phase 1 suites that were not shared (auth, password, rateLimit, seedAdmin, env, app, health, logger), your real ESLint/Prettier configs and CI, real S3, a real browser.
 
 ## Known issues
 
-- Suspended users' access tokens work for up to 15 minutes; other sessions' access tokens survive a password change for up to 15 minutes.
-- Two tabs refreshing at the same instant can trigger reuse detection and log the user out.
-- Concurrent address edits can raise a Mongoose VersionError (500).
-- Limiter waits up to 100 ms per request when Redis is down.
+- Upload enforcement by S3 (size and type in the signature) is verified only by inspecting the signed URL, not with a real upload; bucket CORS is unverified.
+- Images uploaded but never saved on a product stay in S3 (no cleanup). Phase 9: lifecycle rule.
+- Deactivating a category does not hide its products; it only blocks new products in it.
+- No admin endpoint exists yet to suspend a product (`PATCH /admin/products/:id/status` is Phase 8); the vendor-side suspended rules are tested by setting the status directly.
+- Product PATCH uses load-modify-save: concurrent edits of different fields merge, the same field is last-write-wins.
+- Client has no UI for product attributes or shop logo (the API supports both) and no public shop page yet.
+- Phase 1 known issues (access tokens valid up to 15 min after suspension or password change, two-tab refresh race, address VersionError, 100 ms limiter wait with Redis down) are unchanged.
 
-## Next-phase prerequisites (Phase 2: Vendors, catalog, uploads)
+## Next-phase prerequisites (Phase 3: Search + caching)
 
-- Phase 1 checks have been run and verified. Review the results and approve Phase 1 before starting implementation.
-- Decide V5 (same parent domain vs cross-site cookies) before deployment.
-- Phase 2 adds `vendorId` to the JWT (or looks it up per request) and per-route approval checks (`VENDOR_NOT_APPROVED`).
-- S3 env vars and bucket CORS for presigned PUT; add `categories`, `products`, `vendors` models.
-- Vendor routes must be added in module routers under `/vendor/...`; the role guard already applies.
+- Review and approve Phase 2, then create the branch.
+- Product writes (create, update, status change, stock crossing zero) and vendor status changes must enqueue `searchOutbox` entries in the same transaction as the write. Phase 2 product writes are plain saves and will need to move into transactions.
+- Register `GET /products/search` before `GET /products/:slug` in `products.routes.js`.
+- Add cache invalidation for `cache:product:{slug}` and `cache:categories` (category changes in `categories.service.js`, product changes in `products.service.js`).
+- Decide ES/Redis hosting (V4) if deploying soon.

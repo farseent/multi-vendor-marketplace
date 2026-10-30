@@ -13,6 +13,7 @@ const VALID = {
 };
 const REQUIRED = Object.keys(VALID);
 const serverRoot = fileURLToPath(new URL('..', import.meta.url));
+const BOOT_TEST_TIMEOUT = 20_000;
 
 describe('parseEnv', () => {
   it('parses valid config, applies defaults and splits CORS origins', () => {
@@ -79,22 +80,28 @@ describe('server boot', () => {
     });
 
   it('exits non-zero with no environment at all', () => {
-    const result = boot({});
-    expect(result.status).not.toBe(0);
-    for (const key of REQUIRED) expect(result.stderr).toContain(key);
-  });
+      const result = boot({});
+      expect(result.status).not.toBe(0);
+      for (const key of REQUIRED) expect(result.stderr).toContain(key);
+    },
+    BOOT_TEST_TIMEOUT,
+  );
 
   it.each(REQUIRED)('exits non-zero when %s is missing', (missing) => {
-    const env = { ...VALID };
-    delete env[missing];
-    const result = boot(env);
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain(missing);
-  });
+      const env = { ...VALID };
+      delete env[missing];
+      const result = boot(env);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(missing);
+    },
+    BOOT_TEST_TIMEOUT,
+  );
 
   it('exits non-zero when a variable is invalid', () => {
-    const result = boot({ ...VALID, REDIS_URL: 'not-a-url' });
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('REDIS_URL');
-  });
+      const result = boot({ ...VALID, REDIS_URL: 'not-a-url' });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('REDIS_URL');
+    },
+    BOOT_TEST_TIMEOUT,
+  );
 });

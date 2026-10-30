@@ -15,6 +15,13 @@ export const TEST_AUTH_CONFIG = Object.freeze({
   cookie: { sameSite: 'lax', secure: false },
 });
 
+/** In-memory stand-in for lib/s3.js: no AWS, but the same two functions. */
+export const fakeStorage = Object.freeze({
+  publicUrl: (key) => `https://cdn.test/${key}`,
+  presignPut: async ({ key, contentType, sizeBytes, expiresIn }) =>
+    `https://s3.test/${key}?ct=${encodeURIComponent(contentType)}&len=${sizeBytes}&exp=${expiresIn}`,
+});
+
 /** Real app, fake infrastructure. `checks` maps component name -> async function. */
 export function buildTestApp({
   checks,
@@ -23,6 +30,7 @@ export function buildTestApp({
   logger = silentLogger,
   authConfig = TEST_AUTH_CONFIG,
   redis = null,
+  storage = fakeStorage,
 } = {}) {
   const service =
     healthService ??
@@ -42,6 +50,7 @@ export function buildTestApp({
     healthService: service,
     authConfig,
     redis,
+    storage,
   });
 }
 

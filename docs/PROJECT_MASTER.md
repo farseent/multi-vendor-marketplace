@@ -66,12 +66,15 @@ marketplace/
   docs/                   # the 7 planning docs
 ```
 
-Modules: auth, users, shops, catalog (categories, products), uploads, search, cart, coupons, orders (checkout, orders, subOrders), payments, refunds, settlements, reviews, invoices, admin.
+Modules: auth, users, shops, catalog, uploads, search, cart, coupons, orders (checkout, orders, subOrders), payments, refunds, settlements, reviews, invoices, admin.
+
+- `modules/shops/` owns the `vendors` collection.
+- `modules/catalog/` contains two sub-modules: `categories.*` and `products.*`.
 
 ## 6. Conventions (single source of truth)
 
 - **Naming:** collections plural camelCase (`subOrders`); fields camelCase; enum values lowercase snake_case; routes kebab-case plural nouns under `/api/v1`; vendor-console routes under `/api/v1/vendor/*`, admin under `/api/v1/admin/*`.
-- **File naming:** Module files use the `<module>.<type>.js` convention, such as `auth.routes.js`, `auth.controller.js`, `auth.service.js`, `auth.model.js`, and `auth.validator.js`. Use the module name as the filename prefix and the component type as the suffix.
+- **File naming:** Module files use the `<module>.<type>.js` convention, such as `auth.routes.js`, `auth.controller.js`, `auth.service.js`, `auth.model.js`, and `auth.validator.js`. Use the module name as the filename prefix and the component type as the suffix. The `modules/catalog/` directory contains the `categories.*` and `products.*` files. The `modules/shops/` module owns the `vendors` collection.
 - **IDs:** Mongo ObjectId internally; API returns `id` (string). Human-readable `orderNumber`, `subOrderNumber`, `invoiceNumber`.
 - **Money:** integer paise, fields end in `Paise`; currency always `"INR"` and stored on payment documents. Rates end in `Bps` (100 bps = 1%). Never floats.
 - **Time:** UTC, ISO-8601 strings in API; `createdAt/updatedAt` on every collection.

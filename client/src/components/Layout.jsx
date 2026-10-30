@@ -12,6 +12,12 @@ export default function Layout() {
         </NavLink>
         <nav aria-label="Main">
           <NavLink to="/status">System status</NavLink>
+          {user?.role === 'vendor' && (
+            <>
+              <NavLink to="/vendor/shop">My shop</NavLink>
+              <NavLink to="/vendor/products">My products</NavLink>
+            </>
+          )}
           {status === 'authenticated' ? (
             <NavLink to="/account">{user.name}</NavLink>
           ) : (

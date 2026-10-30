@@ -75,7 +75,7 @@ export function createRateLimiter({ scope, windowMs, max, key, redis = null, log
   };
 }
 
-/** The limiters Phase 1 needs, built from RATE_LIMITS. */
+/** The limiters built from RATE_LIMITS. */
 export function createLimiters({ redis, logger }) {
   const make = (scope, key) =>
     createRateLimiter({ scope, ...RATE_LIMITS[scope], key, redis, logger });
@@ -89,5 +89,7 @@ export function createLimiters({ redis, logger }) {
     }),
     register: make('register', (req) => req.ip),
     changePassword: make('changePassword', (req) => req.user.id),
+    // 30/hour per vendor user (one shop per user, so this is per shop). Phase 2.
+    presign: make('presign', (req) => req.user.id),
   };
 }

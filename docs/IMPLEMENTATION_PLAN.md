@@ -33,7 +33,7 @@ Acceptance:
 - [x] Passwords stored as bcrypt hashes (cost ≥ 12); no endpoint ever returns `passwordHash` (test).
 - [x] Access token expires at 15 min; refresh rotates; replaying an old refresh token revokes the family and returns 401 (test).
 - [x] 11th login attempt in 15 min from the same IP+email returns 429.
-- [x] A customer token calling any `/vendor/*` or `/admin/*` route returns 403 (route-table test over every registered route). **Note:** This check is currently vacuous because Phase 2 has not yet registered vendor/admin routes. Add meaningful route coverage in Phase 2.
+- [x] A customer token calling any `/vendor/*` or `/admin/*` route returns 403 (route-table test over every registered route). **Note:** Now covers real `/vendor/*` and `/admin/*` routes (`rbac.test.js` asserts the table is non-empty).
 - [x] Duplicate email returns 409; weak password returns 422 with field details.
 
 ## Phase 2: Vendors, catalog, uploads
@@ -41,15 +41,18 @@ Acceptance:
 Scope: shop profile, admin vendor approval/commission, category CRUD, product CRUD with ownership checks, S3 presign, stock updates, vendor product UI, public product page.
 Acceptance:
 
-- Vendor A requesting/editing Vendor B's product by ID gets 404 for GET, PATCH, DELETE and stock (4 tests).
-- Unapproved vendor cannot set a product `active` (403 `VENDOR_NOT_APPROVED`).
-- Presign rejects content-type outside jpeg/png/webp and sizes > 5 MB; a product with an image key outside the vendor's prefix returns 422.
-- Negative stock or non-integer price returns 422.
-- Public product endpoint never returns `draft/archived/suspended` products or products from non-approved vendors.
+- [x] Vendor A requesting/editing Vendor B's product by ID gets 404 for GET, PATCH, DELETE and stock (4 tests).
+- [x] Unapproved vendor cannot set a product `active` (403 `VENDOR_NOT_APPROVED`).
+- [ ] Presign rejects content-type outside jpeg/png/webp and sizes > 5 MB; a product with an image key outside the vendor's prefix returns 422.
+- [ ] Negative stock or non-integer price returns 422.
+- [x] Public product endpoint never returns `draft/archived/suspended` products or products from non-approved vendors.
 
 ## Phase 3: Search and caching
 
 Scope: ES index mapping, outbox + sync job, search endpoint with filters/sort/pagination, reindex command/endpoint, Mongo fallback, Redis cache for product/category/search, cache invalidation, search UI.
+
+**Route registration requirement:** Register `/products/search` before `/products/:slug` in `products.routes.js` to prevent the dynamic slug route from matching the `search` path.
+
 Acceptance:
 
 - After a product create/update/archive, the change is visible in search within 10 s (measured in integration test, p95 over 20 runs).

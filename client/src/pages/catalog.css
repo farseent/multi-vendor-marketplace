@@ -1,0 +1,82 @@
+.badge {
+  display: inline-block;
+  padding: 0 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+.badge.approved,
+.badge.active {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.badge.rejected,
+.badge.suspended {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+.notice {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.data-table th,
+.data-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.toolbar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.pager {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+.thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+.thumbs li {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: start;
+}
+.thumbs img {
+  object-fit: cover;
+  border: 1px solid var(--line);
+}
+.product-gallery img {
+  max-width: 100%;
+  max-height: 24rem;
+  object-fit: contain;
+}
+.price-was {
+  color: var(--muted);
+  text-decoration: line-through;
+  margin-left: 0.5rem;
+}
+.attributes {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+}
+.attributes dt {
+  color: var(--muted);
+}
+.attributes dd {
+  margin: 0;
+}

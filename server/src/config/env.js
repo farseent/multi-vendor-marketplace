@@ -20,10 +20,16 @@ const origins = z
       .min(1, 'at least one origin is required'),
   );
 
+// An empty value in .env ("S3_BUCKET=") counts as "not set".
+const optionalText = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().min(1).optional(),
+);
+
 // Every variable the backend needs. Later phases add their own (S3, Razorpay...).
 // NODE_ENV has no default on purpose: a production host that forgets it must fail, not
 // silently run in development mode.
-const schema = z.object({
+const fields = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
@@ -43,6 +49,26 @@ const schema = z.object({
   // Number of reverse proxies in front of the API (0 = none). Needed for correct client IPs
   // in IP-based rate limits behind Render/Railway/nginx etc.
   TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
+
+  // --- Phase 2: image uploads (S3) ---
+  // Optional at boot so the API runs without AWS; upload endpoints answer 503 until configured.
+  // Credentials come from the standard AWS variables (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY),
+  // read by the AWS SDK itself, never by our code and never sent to the frontend.
+  S3_BUCKET: optionalText,
+  S3_REGION: optionalText,
+  // Base URL images are served from (e.g. a CDN). Defaults to the bucket's own S3 URL.
+  S3_PUBLIC_BASE_URL: optionalText.pipe(
+    z
+      .string()
+      .regex(/^https?:\/\/\S+$/, 'must be an http(s):// URL')
+      .optional(),
+  ),
+});
+
+// Cross-field rule: a bucket without a region cannot sign anything.
+const schema = fields.refine((env) => !env.S3_BUCKET || env.S3_REGION, {
+  path: ['S3_REGION'],
+  message: 'is required when S3_BUCKET is set',
 });
 
 /**

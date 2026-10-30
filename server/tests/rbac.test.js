@@ -16,7 +16,7 @@ const call = (route, headers = {}) =>
 const routes = listApiRoutes(app);
 
 describe('route table', () => {
-  it('enumerates the registered Phase 1 routes (guards the guard test below)', () => {
+  it('enumerates the registered Phase 1 and 2 routes (guards the guard tests below)', () => {
     const keys = routes.map((r) => `${r.method} ${r.path}`);
     expect(keys).toEqual(
       expect.arrayContaining([
@@ -25,8 +25,23 @@ describe('route table', () => {
         'GET /api/v1/auth/me',
         'GET /api/v1/users/me',
         'DELETE /api/v1/users/me/addresses/:addressId',
+        // Phase 2
+        'GET /api/v1/vendor/profile',
+        'POST /api/v1/vendor/products',
+        'PATCH /api/v1/vendor/products/:productId/stock',
+        'POST /api/v1/vendor/uploads/presign',
+        'PATCH /api/v1/admin/vendors/:vendorId/status',
+        'POST /api/v1/admin/categories',
+        'GET /api/v1/products/:slug',
       ]),
     );
+  });
+
+  it('has real /vendor/* and /admin/* routes, so the role checks below are not vacuous', () => {
+    const gated = routes.filter((r) => /^\/api\/v1\/(vendor|admin)(\/|$)/.test(r.path));
+    expect(gated.length).toBeGreaterThanOrEqual(15);
+    expect(gated.some((r) => r.path.startsWith('/api/v1/vendor/'))).toBe(true);
+    expect(gated.some((r) => r.path.startsWith('/api/v1/admin/'))).toBe(true);
   });
 });
 
@@ -37,6 +52,10 @@ const ANONYMOUS_OK = new Set([
   'POST /api/v1/auth/login',
   'POST /api/v1/auth/refresh',
   'POST /api/v1/auth/logout',
+  // Phase 2 public catalog pages
+  'GET /api/v1/categories',
+  'GET /api/v1/products/:slug',
+  'GET /api/v1/shops/:shopSlug',
 ]);
 
 describe('authorization matrix (every registered route)', () => {
@@ -59,11 +78,33 @@ describe('authorization matrix (every registered route)', () => {
       expect(res.status, `${route.method} ${route.path}`).toBe(403);
     }
   });
+
+  it('a vendor token on every /admin/* route and an admin token on every /vendor/* route -> 403', async () => {
+    const admin = routes.filter((r) => r.path.startsWith('/api/v1/admin/'));
+    const vendor = routes.filter((r) => r.path.startsWith('/api/v1/vendor/'));
+    for (const route of admin) {
+      expect((await call(route, bearer('vendor'))).status, `${route.method} ${route.path}`).toBe(
+        403,
+      );
+    }
+    for (const route of vendor) {
+      expect((await call(route, bearer('admin'))).status, `${route.method} ${route.path}`).toBe(
+        403,
+      );
+    }
+  });
+
+  it('public catalog routes need no token (they must not answer 401/403)', async () => {
+    // Malformed params are rejected by validation (422) before any database access.
+    for (const path of ['/api/v1/products/Bad_Slug!', '/api/v1/shops/Bad_Slug!']) {
+      expect((await request(app).get(path)).status).toBe(422);
+    }
+  });
 });
 
 describe('structural role guard on /vendor and /admin', () => {
-  // These paths have no handlers yet (Phase 2+). The guard must already answer, so a route
-  // added later cannot be reached by the wrong role even if its author forgets authorize().
+  // These paths have no handlers. The guard must still answer, so a route added later cannot
+  // be reached by the wrong role even if its author forgets authorize().
   const hit = (path, headers) =>
     request(app)
       .get(path)
@@ -81,7 +122,7 @@ describe('structural role guard on /vendor and /admin', () => {
     expect((await hit(path, headers)).status).toBe(status);
   });
 
-  it('lets the right role through to routing (404 here only because no handler exists yet)', async () => {
+  it('lets the right role through to routing (404 here only because these paths have no handler)', async () => {
     expect((await hit('/api/v1/vendor/anything', bearer('vendor'))).status).toBe(404);
     expect((await hit('/api/v1/admin/anything', bearer('admin'))).status).toBe(404);
   });

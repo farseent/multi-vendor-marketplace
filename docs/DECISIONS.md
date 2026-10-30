@@ -59,3 +59,13 @@ Format: Decision · Alternatives · Reason · Verify?
 **D26 Refresh returns the session; client refresh is single-flight.** The refresh endpoint returns `{ user, accessToken }`, and the client uses a single-flight mechanism so concurrent requests share one in-progress refresh operation. Alt: return only a new access token and allow each failed request to trigger its own refresh. Returning the session keeps the client’s authentication state synchronized, while single-flight refresh avoids competing refresh requests when refresh-token rotation is enabled. Verify the response contract, concurrent-request behavior, and refresh-token rotation.
 
 **D27 Minimum bcrypt cost is 12.** Enforce a minimum `BCRYPT_COST` of 12, even if a lower value is configured. Alt: accept any configured bcrypt cost. A minimum cost prevents the application from silently using a weaker password-hashing work factor. Verify that values below 12 are rejected or safely raised to 12, and that valid values of 12 or higher work correctly.
+
+**D28 Vendor identity is looked up per request.** Resolve the authenticated vendor's identity from the database on each request rather than relying on potentially stale vendor data embedded in the access token. Alt: trust vendor identity claims from the JWT. This ensures vendor access uses current database state.
+
+**D29 S3 is optional at application boot.** The application must start even when S3 is not configured; image upload operations return HTTP 503 when S3 is unavailable or unconfigured. Alt: fail application startup without S3 configuration. This allows development and deployment without requiring image storage immediately.
+
+**D30 Admin mutations are audited starting in Phase 2.** Record administrative mutation actions in the audit log from Phase 2 onward. Alt: introduce audit logging in a later phase. This provides traceability for administrative changes.
+
+**D31 Stock changes only through the stock endpoint.** Inventory adjustments must go through the dedicated stock endpoint rather than general product update operations. Alt: allow stock quantities to be modified through product CRUD. This keeps inventory changes controlled and prevents accidental stock modifications.
+
+**D32 Shop logos share the `products/{vendorId}/` S3 prefix.** Store shop logo objects under the same vendor-specific S3 prefix used for product images. Alt: use a separate prefix for shop logos. This simplifies vendor-scoped object storage and ownership checks.
