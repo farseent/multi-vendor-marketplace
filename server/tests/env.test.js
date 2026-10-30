@@ -79,7 +79,9 @@ describe('server boot', () => {
       timeout: 15_000,
     });
 
-  it('exits non-zero with no environment at all', () => {
+  it(
+    'exits non-zero with no environment at all',
+    () => {
       const result = boot({});
       expect(result.status).not.toBe(0);
       for (const key of REQUIRED) expect(result.stderr).toContain(key);
@@ -87,7 +89,9 @@ describe('server boot', () => {
     BOOT_TEST_TIMEOUT,
   );
 
-  it.each(REQUIRED)('exits non-zero when %s is missing', (missing) => {
+  it.each(REQUIRED)(
+    'exits non-zero when %s is missing',
+    (missing) => {
       const env = { ...VALID };
       delete env[missing];
       const result = boot(env);
@@ -97,7 +101,9 @@ describe('server boot', () => {
     BOOT_TEST_TIMEOUT,
   );
 
-  it('exits non-zero when a variable is invalid', () => {
+  it(
+    'exits non-zero when a variable is invalid',
+    () => {
       const result = boot({ ...VALID, REDIS_URL: 'not-a-url' });
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('REDIS_URL');
