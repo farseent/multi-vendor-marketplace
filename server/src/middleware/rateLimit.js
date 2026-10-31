@@ -91,5 +91,7 @@ export function createLimiters({ redis, logger }) {
     changePassword: make('changePassword', (req) => req.user.id),
     // 30/hour per vendor user (one shop per user, so this is per shop). Phase 2.
     presign: make('presign', (req) => req.user.id),
+    // 60/min per IP on the public search endpoint (Phase 3)
+    search: make('search', (req) => req.ip),
   };
 }

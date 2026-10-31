@@ -1,3 +1,4 @@
+import { CACHE } from '../../config/constants.js';
 import { AppError } from '../../lib/AppError.js';
 import { slugify } from '../../lib/slug.js';
 import { Category } from './categories.model.js';
@@ -6,7 +7,7 @@ const byOrder = (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.na
 const invalidParent = (message) =>
   new AppError('VALIDATION_ERROR', 422, 'Invalid request', [{ path: 'body.parentId', message }]);
 
-export function createCategoriesService({ audit }) {
+export function createCategoriesService({ audit, cache }) {
   /** Two levels at most (DATABASE_SCHEMA): a parent must itself be a top-level category. */
   async function checkParent(parentId, selfId) {
     if (selfId && String(parentId) === String(selfId)) {
@@ -20,16 +21,20 @@ export function createCategoriesService({ audit }) {
   return {
     /** Public tree of active categories: [{ id, name, slug, children: [...] }] */
     async tree() {
+      const cached = await cache.getJson(CACHE.keys.categories);
+      if (cached) return cached;
       const all = await Category.find({ isActive: true });
       const toNode = (c) => ({ id: c.id, name: c.name, slug: c.slug });
       const roots = all.filter((c) => !c.parentId).sort(byOrder);
-      return roots.map((root) => ({
+      const result = roots.map((root) => ({
         ...toNode(root),
         children: all
           .filter((c) => c.parentId && String(c.parentId) === root.id)
           .sort(byOrder)
           .map(toNode),
       }));
+      await cache.setJson(CACHE.keys.categories, result, CACHE.ttlSeconds.categories);
+      return result;
     },
 
     /** Admin view: flat, includes inactive categories. */
@@ -46,6 +51,7 @@ export function createCategoriesService({ audit }) {
         entityType: 'category',
         entityId: category._id,
       });
+      await cache.del(CACHE.keys.categories);
       return category;
     },
 
@@ -68,6 +74,7 @@ export function createCategoriesService({ audit }) {
         entityId: category._id,
         meta: { fields: Object.keys(patch) },
       });
+      await cache.del(CACHE.keys.categories);
       return category;
     },
   };

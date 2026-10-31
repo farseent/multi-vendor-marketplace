@@ -16,6 +16,7 @@ export const RATE_LIMITS = {
   register: { windowMs: 60 * 60_000, max: 5 }, // per IP, shared by both register routes
   changePassword: { windowMs: 15 * 60_000, max: 10 }, // per user
   presign: { windowMs: 60 * 60_000, max: 30 }, // per vendor user (Phase 2)
+  search: { windowMs: 60_000, max: 60 }, // per IP (Phase 3)
 };
 
 // Vendors, catalog, uploads (Phase 2)
@@ -43,3 +44,37 @@ export const VENDOR_TRANSITIONS = {
   rejected: ['approved'],
 };
 export const PRODUCT_STATUSES = ['draft', 'active', 'archived', 'suspended'];
+
+// Search and caching (Phase 3)
+export const SEARCH = {
+  alias: 'products', // the app only ever talks to this alias; reindex swaps what it points at
+  maxResultWindow: 10_000, // Elasticsearch default index.max_result_window (page * limit)
+  maxQueryLength: 100,
+  // 0 replicas keeps a single-node cluster green. Raise it on a multi-node cluster.
+  replicas: 0,
+  reindexBatchSize: 500,
+};
+export const SEARCH_SORTS = ['relevance', 'price', '-price', '-createdAt', '-ratingAvg'];
+
+// Outbox -> Elasticsearch sync job (ARCHITECTURE 3.6)
+export const SEARCH_SYNC = {
+  jobName: 'searchSync',
+  intervalMs: 2000,
+  batchSize: 100,
+  leaseMs: 30_000,
+  maxAttempts: 10, // per-entry failures beyond this are flagged and left for an admin
+  maxBackoffMs: 5 * 60_000,
+  outageBackoffMs: { min: 2000, max: 60_000 }, // whole-request failures (ES unreachable)
+};
+
+// Redis cache (ARCHITECTURE 4). Keys are namespaced `cache:*`; every call is fail-open.
+export const CACHE = {
+  timeoutMs: 100,
+  breakerMs: 5000, // skip reads/writes this long after a Redis failure
+  keys: {
+    product: (slug) => `cache:product:${slug}`,
+    categories: 'cache:categories',
+    search: (hash) => `cache:search:${hash}`,
+  },
+  ttlSeconds: { product: 5 * 60, categories: 60 * 60, search: 60 },
+};

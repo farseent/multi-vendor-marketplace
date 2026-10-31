@@ -71,9 +71,10 @@ States: `not_eligible → pending_release → released → settled` (+ `reversed
 ### 3.6 Search synchronization (Mongo → Elasticsearch)
 
 - Every product create/update/stock-crossing-zero/status change writes a `searchOutbox` entry **in the same transaction** as the product write.
-- A job (every 2 s, lease-guarded) claims entries, bulk-indexes using `version = product.updatedAt millis` with `version_type=external` (stale writes rejected), deletes the outbox entry on success; on failure increments `attempts` with backoff; entries over 10 attempts are flagged for admin attention.
+- A job (every 2 s, lease-guarded) claims entries, bulk-indexes using `version = max(product.updatedAt, shop.updatedAt) millis` with `version_type=external_gte`; deletes are versioned too (stale writes rejected), deletes the outbox entry on success; on a failed bulk request (ES unreachable), pauses the job with back-off and does not consume entry attempts; only per-document rejections consume attempts; entries over 10 attempts are flagged for admin attention.
 - Indexed doc = only public, searchable fields of `active` products from `approved` vendors. Vendor suspension enqueues all that vendor's products.
 - `POST /admin/search/reindex` (and `npm run reindex`) rebuilds an index behind an alias and swaps atomically.
+- Reindex holds the sync lease, so the job pauses while it runs.
 - Search failure behaviour: `/products/search` falls back to a Mongo text-index query with reduced features and header `X-Search-Fallback: mongo`.
 
 ### 3.7 Image upload
@@ -91,6 +92,8 @@ Vendor requests `POST /vendor/uploads/presign` (content-type allowlist jpeg/png/
 | Rate limits     | `rl:{scope}:{key}`                  | window | n/a                                                                  | General limiter fails open to in-memory per-process limiter; auth limiter falls back to in-memory (never disabled) |
 
 Rules: cache never holds stock, prices used at checkout, or order/payment data. Checkout always reads Mongo. All cache calls have 100 ms timeout; errors are logged at `warn`, never thrown to the user.
+
+Reads/writes skip Redis for 5 s after a failure (circuit breaker); deletes are always attempted. Vendor suspension/rename and product writes delete affected `cache:product:*` keys.
 
 ## 5. Inventory and concurrency rules
 

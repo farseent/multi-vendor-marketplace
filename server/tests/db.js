@@ -4,10 +4,12 @@ import { RefreshToken } from '../src/modules/auth/auth.model.js';
 import { AuditLog } from '../src/modules/audit/audit.model.js';
 import { Category } from '../src/modules/catalog/categories.model.js';
 import { Product } from '../src/modules/catalog/products.model.js';
+import { JobLock } from '../src/jobs/jobLock.js';
+import { SearchOutbox } from '../src/modules/search/search.model.js';
 import { Vendor } from '../src/modules/shops/shops.model.js';
 import { User } from '../src/modules/users/users.model.js';
 
-const MODELS = [User, RefreshToken, Vendor, Category, Product, AuditLog];
+const MODELS = [User, RefreshToken, Vendor, Category, Product, AuditLog, SearchOutbox, JobLock];
 
 /**
  * In-memory single-node replica set (same topology as docker-compose, so Phase 5 transaction

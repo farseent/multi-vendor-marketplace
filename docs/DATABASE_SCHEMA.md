@@ -162,8 +162,9 @@ Indexes: `{code:1}` unique; `{vendorId:1}`.
 
 - `counters`: `{ _id:'orderNumber:YYYYMMDD' | 'invoice:YYYY', seq }` via `$inc` upsert.
 - `webhookEvents`: `provider, eventId (unique with provider), eventType, status: received|processed|failed|ignored, attempts, receivedAt, processedAt?, error?`; TTL 90 days on `receivedAt`.
-- `searchOutbox`: `productId, op:'upsert|delete', attempts, nextAttemptAt, lastError?, createdAt`; index `{nextAttemptAt:1}`.
-- `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; written by admin mutations for `vendor.status_changed`, `vendor.commission_changed`, `category.created`, and `category.updated`; index `{entityType:1,entityId:1,createdAt:-1}`.
+- `searchOutbox`: `productId, op:'upsert|delete', attempts, nextAttemptAt, lastError?, createdAt`; indexes `{nextAttemptAt:1}` and `{productId:1}`.
+  `op` is advisory; the sync job determines whether to index or delete using the current product and vendor state.
+- `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; written by admin mutations for `vendor.status_changed`, `vendor.commission_changed`, `category.created`, `category.updated`, and `search.reindexed`; index `{entityType:1,entityId:1,createdAt:-1}`.
 - `reconciliationReports`: `runAt, totals{...}, mismatches[], status`.
 - `jobLocks`: `{ _id: jobName, lockedUntil, owner }`.
 

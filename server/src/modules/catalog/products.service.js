@@ -1,3 +1,5 @@
+import mongoose from 'mongoose';
+import { CACHE } from '../../config/constants.js';
 import { AppError } from '../../lib/AppError.js';
 import { pageMeta, skipFor } from '../../lib/pagination.js';
 import { isDuplicateOn, shortId, slugify } from '../../lib/slug.js';
@@ -11,7 +13,16 @@ const notFound = () => new AppError('NOT_FOUND', 404, 'Product not found');
 const invalid = (path, message) =>
   new AppError('VALIDATION_ERROR', 422, 'Invalid request', [{ path: `body.${path}`, message }]);
 
-export function createProductsService({ storage = null }) {
+// Runs `work(session)` as one Mongo transaction (needs a replica set, see docker-compose).
+const inTransaction = (work) => mongoose.connection.transaction(work);
+
+/**
+ * `searchOutbox` and `cache` are required: every product write enqueues a search-index entry in
+ * the SAME transaction (so it cannot be lost), and drops the cached detail page after commit.
+ */
+export function createProductsService({ storage = null, searchOutbox, cache }) {
+  const invalidate = (product) => cache.del(CACHE.keys.product(product.slug));
+
   const imageUrl = (key) => (storage ? storage.publicUrl(key) : null);
 
   // Vendor console view: every field, with image URLs added.
@@ -70,8 +81,8 @@ export function createProductsService({ storage = null }) {
   }
 
   // Ownership is part of the query: another vendor's product is simply "not found" (D15).
-  async function loadOwn(vendorId, productId) {
-    const product = await Product.findOne({ _id: productId, vendorId });
+  async function loadOwn(vendorId, productId, session = null) {
+    const product = await Product.findOne({ _id: productId, vendorId }).session(session);
     if (!product) throw notFound();
     return product;
   }
@@ -85,10 +96,20 @@ export function createProductsService({ storage = null }) {
       const base = slugify(data.title, { fallback: 'product', maxLength: 60 });
       for (let attempt = 0; attempt < MAX_SLUG_ATTEMPTS; attempt++) {
         try {
-          const product = await Product.create({
-            ...data,
-            vendorId: vendor.id, // from the shop record, never from the request body
-            slug: `${base}-${shortId()}`,
+          const product = await inTransaction(async (session) => {
+            const [created] = await Product.create(
+              [
+                {
+                  ...data,
+                  vendorId: vendor.id, // from the shop record, never from the request body
+                  slug: `${base}-${shortId()}`,
+                },
+              ],
+              { session },
+            );
+            // A draft is not searchable yet, so only a product created active needs indexing.
+            if (created.status === 'active') await searchOutbox.enqueue([created._id], { session });
+            return created;
           });
           return presentOwn(product);
         } catch (err) {
@@ -144,7 +165,11 @@ export function createProductsService({ storage = null }) {
       if (attributes !== undefined) {
         product.attributes = attributes ? new Map(Object.entries(attributes)) : undefined;
       }
-      await product.save();
+      await inTransaction(async (session) => {
+        await product.save({ session });
+        await searchOutbox.enqueue([product._id], { session });
+      });
+      await invalidate(product);
       return presentOwn(product);
     },
 
@@ -160,29 +185,50 @@ export function createProductsService({ storage = null }) {
       }
       if (product.status !== 'archived') {
         product.status = 'archived';
-        await product.save();
+        await inTransaction(async (session) => {
+          await product.save({ session });
+          await searchOutbox.enqueue([product._id], { session });
+        });
+        await invalidate(product);
       }
       return presentOwn(product);
     },
 
     /** Absolute set in one atomic update, scoped to the owner. */
     async setStock(vendorId, productId, stockQty) {
-      const product = await Product.findOneAndUpdate(
-        { _id: productId, vendorId },
-        { $set: { stockQty } },
-        { returnDocument: 'after' },
-      );
-      if (!product) throw notFound();
+      const product = await inTransaction(async (session) => {
+        const before = await Product.findOne({ _id: productId, vendorId }, { stockQty: 1 }).session(
+          session,
+        );
+        if (!before) throw notFound();
+        const updated = await Product.findOneAndUpdate(
+          { _id: productId, vendorId },
+          { $set: { stockQty } },
+          { returnDocument: 'after', session },
+        );
+        // The index only stores "in stock yes/no", so it needs updating only when that flips.
+        if (before.stockQty > 0 !== stockQty > 0) {
+          await searchOutbox.enqueue([updated._id], { session });
+        }
+        return updated;
+      });
+      await invalidate(product); // the cached page shows inStock
       return presentOwn(product);
     },
 
     /** Public page: active product of an approved shop, otherwise a plain 404. */
     async getPublicBySlug(slug) {
+      const key = CACHE.keys.product(slug);
+      const cached = await cache.getJson(key);
+      if (cached) return cached;
+
       const product = await Product.findOne({ slug, status: 'active' });
-      if (!product) throw notFound();
+      if (!product) throw notFound(); // misses are not cached: a product can appear any moment
       const shop = await Vendor.findOne({ _id: product.vendorId, status: 'approved' });
       if (!shop) throw notFound();
-      return presentPublic(product, shop);
+      const view = presentPublic(product, shop);
+      await cache.setJson(key, view, CACHE.ttlSeconds.product);
+      return view;
     },
   };
 }

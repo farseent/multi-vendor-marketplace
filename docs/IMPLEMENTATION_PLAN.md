@@ -55,12 +55,12 @@ Scope: ES index mapping, outbox + sync job, search endpoint with filters/sort/pa
 
 Acceptance:
 
-- After a product create/update/archive, the change is visible in search within 10 s (measured in integration test, p95 over 20 runs).
-- Killing ES: `/products/search` still returns 200 with `X-Search-Fallback: mongo`; restoring ES and running the sync drains the outbox to 0.
-- `npm run reindex` on 1,000 seeded products completes and alias swap causes zero failed search requests during a concurrent query loop.
-- Stopping Redis: product detail and search still return 200; error logged at `warn`; auth limiter still enforces limits.
-- Product update invalidates `cache:product:{slug}`: the next GET returns the new price (test).
-- Cached product detail p95 < 50 ms vs uncached measured locally and recorded in docs.
+- [ ] After a product create/update/archive, the change is visible in search within 10 s (measured in integration test, p95 over 20 runs).
+- [ ] Killing ES: `/products/search` still returns 200 with `X-Search-Fallback: mongo`; restoring ES and running the sync drains the outbox to 0.
+- [ ] `npm run reindex` on 1,000 seeded products completes and alias swap causes zero failed search requests during a concurrent query loop.
+- [ ] Stopping Redis: product detail and search still return 200; error logged at `warn`; auth limiter still enforces limits.
+- [ ] Product update invalidates `cache:product:{slug}`: the next GET returns the new price (test).
+- [ ] Cached product detail p95 < 50 ms vs uncached measured locally and recorded in docs.
 
 ## Phase 4: Cart and coupons
 

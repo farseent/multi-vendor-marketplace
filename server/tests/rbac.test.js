@@ -33,6 +33,9 @@ describe('route table', () => {
         'PATCH /api/v1/admin/vendors/:vendorId/status',
         'POST /api/v1/admin/categories',
         'GET /api/v1/products/:slug',
+        // Phase 3
+        'GET /api/v1/products/search',
+        'POST /api/v1/admin/search/reindex',
       ]),
     );
   });
@@ -55,6 +58,7 @@ const ANONYMOUS_OK = new Set([
   // Phase 2 public catalog pages
   'GET /api/v1/categories',
   'GET /api/v1/products/:slug',
+  'GET /api/v1/products/search',
   'GET /api/v1/shops/:shopSlug',
 ]);
 

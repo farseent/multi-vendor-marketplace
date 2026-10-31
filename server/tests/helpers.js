@@ -31,6 +31,7 @@ export function buildTestApp({
   authConfig = TEST_AUTH_CONFIG,
   redis = null,
   storage = fakeStorage,
+  searchIndex = null,
 } = {}) {
   const service =
     healthService ??
@@ -51,6 +52,7 @@ export function buildTestApp({
     authConfig,
     redis,
     storage,
+    searchIndex,
   });
 }
 

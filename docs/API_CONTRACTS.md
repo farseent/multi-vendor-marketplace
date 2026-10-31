@@ -45,13 +45,13 @@ Base URL: `/api/v1`. JSON only (webhook uses raw body). Auth: `Authorization: Be
 
 ### Public catalog and shops
 
-| Method | Path | Auth | Notes |
-| ------ | ---------------------------- | ------ | ----------------------------------------------------------------------------------------------------- | ----- | ------ | ---------- | ------------------------- |
-| GET | /categories | Public | cached tree |
-| GET | /products/search | Public | ES; params `q, categoryId, vendor (shopSlug), minPrice, maxPrice, minRating, inStock, sort (relevance | price | -price | -createdAt | -ratingAvg), page, limit` |
-| GET | /products/:slug | Public | cached |
-| GET | /shops/:shopSlug | Public | approved shops only |
-| GET | /products/:productId/reviews | Public | published only, paginated |
+| Method | Path                         | Auth   | Notes                                                                                                                                                                                                                                                                                                                                                                            |
+| ------ | ---------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | /categories                  | Public | cached tree                                                                                                                                                                                                                                                                                                                                                                      |
+| GET    | /products/search             | Public | ES; params `q, categoryId, vendor (shopSlug), minPrice, maxPrice, minRating, inStock, sort (relevance, price, -price, -createdAt, -ratingAvg), page, limit`; `minPrice` and `maxPrice` are integer paise; `page * limit` must be ≤ 10000 (otherwise 422); returns `X-Search-Fallback: mongo` when served by Mongo fallback; rate limit 60 requests/minute/IP (429 when exceeded) |
+| GET    | /products/:slug              | Public | cached                                                                                                                                                                                                                                                                                                                                                                           |
+| GET    | /shops/:shopSlug             | Public | approved shops only                                                                                                                                                                                                                                                                                                                                                              |
+| GET    | /products/:productId/reviews | Public | published only, paginated                                                                                                                                                                                                                                                                                                                                                        |
 
 ### Cart and coupons
 
@@ -116,7 +116,7 @@ Base URL: `/api/v1`. JSON only (webhook uses raw body). Auth: `Authorization: Be
 | POST           | /admin/settlements/:settlementId/release                                  | manual release (demo/test)                                                         |
 | GET / POST     | /admin/reconciliation, /admin/reconciliation/run                          |                                                                                    |
 | GET            | /admin/analytics/overview, /sales-timeseries, /top-vendors, /top-products | cached 5 min                                                                       |
-| POST           | /admin/search/reindex                                                     |                                                                                    |
+| POST           | /admin/search/reindex                                                     | A                                                                                  | Rebuilds Elasticsearch index; 200 `{ index, indexed, durationMs }`; 409 if a sync/reindex holds the lease; 503 if search is not configured or rebuild fails |
 | GET            | /health, /api/v1/health                                                   | Public                                                                             |
 | GET            | /health/ready, /api/v1/health/ready                                       | Public                                                                             |
 
@@ -212,7 +212,7 @@ Vendor routes that require a shop profile return HTTP 403 with error code `FORBI
 | `pending`      | `approved`, `rejected` |
 | `approved`     | `suspended`            |
 | `suspended`    | `approved`             |
-| `rejected`     | none (terminal)        |
+| `rejected`     | `approved`             |
 
 Any transition not listed above returns 409 `INVALID_STATE_TRANSITION`.
 
@@ -310,6 +310,23 @@ Error 403 `VENDOR_NOT_APPROVED` if the shop isn't approved and status is `active
     }
   ],
   "meta": { "page": 1, "limit": 2, "total": 37, "totalPages": 19 }
+}
+```
+
+### POST /admin/search/reindex
+
+Auth: Admin (`A`).
+
+Response 200:
+
+```json
+{
+  "success": true,
+  "data": {
+    "index": "products-v2",
+    "indexed": 1250,
+    "durationMs": 3420
+  }
 }
 ```
 

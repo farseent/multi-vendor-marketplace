@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { validate } from '../../middleware/validate.js';
+import { searchQuery } from '../search/search.validator.js';
 import {
   createProductBody,
   listProductsQuery,
@@ -12,11 +13,17 @@ import {
 /**
  * Paths relative to /api/v1. /vendor/* is role-gated in app.js; `loadShop` then resolves the
  * caller's shop (req.vendor) for every product route.
- * Phase 3: register GET /products/search BEFORE /products/:slug so "search" is not read as a slug.
  */
-export function createProductsRouter({ controller, loadShop }) {
+export function createProductsRouter({ controller, searchController, loadShop, limiters }) {
   const router = Router();
 
+  // Must stay ABOVE /products/:slug, otherwise "search" would be read as a slug.
+  router.get(
+    '/products/search',
+    limiters.search,
+    validate({ query: searchQuery }),
+    searchController.search,
+  );
   router.get('/products/:slug', validate({ params: productSlugParams }), controller.getPublic);
 
   router.get('/vendor/products', loadShop, validate({ query: listProductsQuery }), controller.list);

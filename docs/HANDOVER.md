@@ -1,99 +1,81 @@
 # HANDOVER.md
 
-## Current state (after Phase 2: Vendors, catalog, uploads)
+## Current state (after Phase 3: Search + caching)
 
-Phase 2 is implemented and its tests pass (see "Verification" for exactly what was and was not run). Branch: `phase-2-vendors-catalog`. No Phase 3+ code exists. Phase 1 (auth, users, RBAC) is unchanged except for the additions listed below.
+Phase 3 is implemented. Branch suggestion: `phase-3-search-caching`. No Phase 4+ code exists. Phases 1-2 behave as before, except that product and shop writes now run inside Mongo transactions (see "Key decisions").
 
-- **Shops:** a vendor user creates one shop (`POST /vendor/profile`, status `pending`, slug derived from the name and kept stable). Admins list vendors, approve / reject / suspend (transition table, 409 otherwise) and set a commission override (0-5000 bps, `null` clears it). Public `GET /shops/:shopSlug` answers only for `approved` shops and returns no private fields.
-- **Categories:** admin create/list/update, two levels max, unique slug. Public `GET /categories` returns the tree of active categories (not cached yet).
-- **Products:** vendor CRUD under `/vendor/products`, every query scoped by the vendor id taken from the shop record (never from body, params or token). Another vendor's product is `404` for GET, PATCH, DELETE and stock. `DELETE` archives. Stock is changed only through `PATCH .../stock` (absolute set). Setting `status: active` needs an approved shop (`403 VENDOR_NOT_APPROVED`). Public `GET /products/:slug` returns only `active` products of `approved` shops, through an explicit allow-list of fields (no `stockQty`, `sku`, `vendorId`).
-- **Uploads:** `POST /vendor/uploads/presign` returns a short-lived presigned PUT URL for `products/{vendorId}/{uuid}.{jpg|png|webp}`. Type and exact size are part of the signature. Product images and shop logos must use keys inside the vendor's own prefix (422 otherwise). Without `S3_BUCKET` the API still boots and presign answers 503.
-- **Audit:** every admin mutation added in this phase writes an `auditLogs` entry (vendor status, commission, category create/update).
-- **Client:** `/vendor/shop` (create/edit shop, status banner), `/vendor/products` (list, filter, paginate, archive), `/vendor/products/new` and `/vendor/products/:productId` (form, image upload, separate stock form), public `/products/:slug`. Prices are typed in rupees and converted to integer paise with string math (`lib/money.js`). Role-gated routes are UX only; the API enforces roles.
-- **Not in Phase 2 (by plan):** search, Redis caching, admin console UI (approve vendors via API for now), payout account, admin product moderation, vendor dashboard.
+- **Search endpoint:** `GET /products/search` (public, 60/min/IP) with `q, categoryId, vendor, minPrice, maxPrice, minRating, inStock, sort, page, limit`. Prices are integer paise. `page x limit` is capped at 10,000 (Elasticsearch result window), otherwise 422. Registered above `/products/:slug` in `products.routes.js`.
+- **Elasticsearch index:** alias `products` over concrete indices `products_v0` (first boot) / `products_v<timestamp>` (after reindex). Strict mapping; only public fields are indexed (no `stockQty`, `sku`, `vendorId`). Only `active` products of `approved` shops are indexed.
+- **Outbox sync:** every product create-as-active / update / archive / stock-crossing-zero and every shop status change or rename writes `searchOutbox` entries in the SAME Mongo transaction as the write. `jobs/searchSync.js` (every 2 s, lease `jobLocks._id='searchSync'`) re-reads the product, bulk-applies index/delete with external versioning, then deletes the entries.
+- **Mongo fallback:** if ES is down or not configured, search answers 200 from a Mongo `$text` query (same filters/sorts, no fuzziness) with header `X-Search-Fallback: mongo`. Fallback answers are never cached.
+- **Reindex:** `npm run reindex` (root or `-w server`) and `POST /admin/search/reindex` (admin, audited as `search.reindexed`). Builds a new index, bulk loads, atomically swaps the alias, deletes the old index. The sync job pauses during it (same lease).
+- **Redis cache (fail-open, 100 ms timeout, warn logs, 5 s circuit breaker for reads/writes):** `cache:product:{slug}` 5 min, `cache:categories` 1 h, `cache:search:{hash}` 60 s. Product keys are deleted on product update/archive/stock change and on shop status change/rename (all that shop's products). Category key is deleted on admin category create/update. Search results: TTL only.
+- **Client:** `/search` page (URL holds filters; prices typed in rupees, sent as paise), header search box, home page link.
 
-## Key decisions
+## Key decisions (proposed additions to DECISIONS.md)
 
-- **D28 Vendor identity is looked up per request.** `middleware/shop.js` (`loadShop`) finds the shop by `req.user.id` and sets `req.vendor = { id, status }`. The JWT is unchanged (no `vendorId` claim), so approval or suspension applies immediately instead of after 15 minutes. Cost: one indexed query per vendor request. A vendor without a shop gets `403 FORBIDDEN` on product and upload routes.
-- **D29 S3 is optional at boot.** `S3_BUCKET` / `S3_REGION` / `S3_PUBLIC_BASE_URL` are optional; presign answers `503 SERVICE_UNAVAILABLE` and image URLs are `null` when unset. Tests inject a fake storage object with the same two functions (`presignPut`, `publicUrl`).
-- **D30 Admin mutations are audited from now on** (ARCHITECTURE section 6), via `modules/audit`. Phase 8 only has to add coverage for the later admin routes.
-- **D31 Stock is not editable through product PATCH** (strict body rejects it); only `PATCH /vendor/products/:id/stock`, an atomic absolute set scoped to the owner. A form save can therefore never overwrite newer stock.
-- **D32 Shop logos use the same `products/{vendorId}/` prefix as product images,** so the bucket needs a single public-read rule. A logo can only be set via PATCH after the shop exists (the prefix contains the vendor id).
-- Pending shops may create draft products and use presign (drafts need images). Only publishing needs approval. Suspended or rejected shops cannot publish; their active products are invisible publicly because the public query also requires an approved shop.
-- A product suspended by an admin cannot be restored or archived by its vendor (409 `INVALID_STATE_TRANSITION`); other fields stay editable.
-- Module naming: shops model lives in `modules/shops` (collection `vendors`); `modules/catalog` holds two sub-modules, `categories.*` and `products.*`.
-- Vendor status transitions: `pending -> approved|rejected`, `approved -> suspended`, `suspended -> approved`, `rejected -> approved`. Applied with a conditional update so two admins cannot both win.
-- Mongoose 9: use `returnDocument: 'after'` (not `new: true`) in `findOneAndUpdate`.
+- **D33 Product and shop writes run in transactions with the outbox entry** (replaces the Phase 2 plain saves). Mongo must be a replica set (already required).
+- **D34 The sync job re-reads current state; the outbox entry only means "look at this product again".** `op` is stored for humans. Replays are idempotent.
+- **D35 Index version = max(product.updatedAt, shop.updatedAt) in ms, `version_type=external_gte`.** (ARCHITECTURE said product.updatedAt only.) A product's visibility depends on its shop, so re-approving a shop must outrank the delete written while it was suspended. Deletes carry a version too.
+- **D36 An Elasticsearch outage does not consume an entry's attempts.** A failed request pauses the whole job with growing back-off (2 s up to 60 s). Only per-document rejections increment `attempts` (back-off up to 5 min); at 10 attempts the entry is logged at `error`, kept, and no longer claimed. A successful reindex deletes flagged entries older than itself.
+- **D37 Fixed name `products_v0` for the first index** so concurrent first boots cannot attach two indices to the alias.
+- **D38 Cache circuit breaker:** after a Redis failure, cache reads/writes are skipped for 5 s; deletes are always attempted.
+- Search is registered in `products.routes.js` (as HANDOVER Phase 2 required); the admin reindex route lives in `modules/search/search.routes.js`.
 
 ## Relevant files
 
-- `server/src/modules/shops/` (model, validator, service, controller, routes), `modules/catalog/` (`categories.*`, `products.*`), `modules/uploads/`, `modules/audit/`
-- `server/src/middleware/shop.js` (loadShop), `rateLimit.js` (new `presign` limiter)
-- `server/src/lib/`: `s3.js`, `slug.js`, `pagination.js`, `uploadKeys.js`
-- `server/src/config/constants.js` (Phase 2 constants, `VENDOR_TRANSITIONS`, `UPLOAD`), `config/env.js` (S3 vars), `app.js`, `server.js` (storage + index init)
-- `server/tests/`: `shops`, `catalog`, `uploads`, `phase2.unit` tests; `factories.js`; `db.js`, `helpers.js` (`fakeStorage`), `rbac.test.js` updated
-- `client/src/pages/` (`VendorShopPage`, `VendorProductsPage`, `VendorProductFormPage`, `ProductPage`, `catalog.css`), `components/ImageUploader.jsx`, `lib/money.js`, `lib/uploads.js`
+New: `server/src/modules/search/` (`search.model` outbox, `.mapping`, `.query` pure ES-DSL builder, `.index` the only ES-touching file, `.docs` Mongo->documents, `.outbox`, `.fallback`, `.service`, `.reindex`, `.validator`, `.controller`, `.routes`), `server/src/jobs/` (`jobLock.js`, `searchSync.js`), `server/src/lib/cache.js`, `server/src/scripts/reindex.js`, `server/tests/` (`fakeSearch.js`, `phase3.unit.test.js`, `search.test.js`), `client/src/lib/search.js` (+ test), `client/src/pages/SearchPage.jsx`.
+Changed: `app.js`, `server.js`, `config/constants.js`, `middleware/rateLimit.js`, `catalog/products.{routes,service}.js`, `catalog/categories.service.js`, `shops/shops.service.js`, `tests/{db,helpers,rbac.test}.js`, `client/src/{App.jsx,components/Layout.jsx,pages/HomePage.jsx,pages/catalog.css}`, both `package.json` (script `reindex`).
 
 ## API changes
 
-| Method               | Path                                  | Auth          | Notes                                                                                                                  |
-| -------------------- | ------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| GET                  | `/categories`                         | Public        | tree `[{ id, name, slug, children }]`, active only                                                                     |
-| GET                  | `/products/:slug`                     | Public        | active product of approved shop; else 404. Phase 3: register `/products/search` BEFORE this route                      |
-| GET                  | `/shops/:shopSlug`                    | Public        | approved only; `{ id, shopName, shopSlug, description, logoUrl }`                                                      |
-| GET / POST / PATCH   | `/vendor/profile`                     | Vendor        | GET 404 until created; POST 201 once (409 after); PATCH `shopName`, `description`, `logoKey` (null clears)             |
-| GET / POST           | `/vendor/products`                    | Vendor + shop | list `?status&sort&page&limit`; create (default `status: draft`)                                                       |
-| GET / PATCH / DELETE | `/vendor/products/:productId`         | Vendor + shop | 404 if not owned; DELETE archives (idempotent)                                                                         |
-| PATCH                | `/vendor/products/:productId/stock`   | Vendor + shop | `{ stockQty }` integer 0..1,000,000                                                                                    |
-| POST                 | `/vendor/uploads/presign`             | Vendor + shop | `{ contentType, sizeBytes }` -> 201 `{ uploadUrl, method, headers, key, publicUrl, expiresInSeconds }`; 30/hour/vendor |
-| GET                  | `/admin/vendors`                      | Admin         | `?status&page&limit`, includes `owner { id, name, email }`                                                             |
-| PATCH                | `/admin/vendors/:vendorId/status`     | Admin         | `{ status: approved\|rejected\|suspended }`                                                                            |
-| PATCH                | `/admin/vendors/:vendorId/commission` | Admin         | `{ commissionRateBps: 0..5000 \| null }`                                                                               |
-| GET / POST           | `/admin/categories`                   | Admin         | flat list incl. inactive / create                                                                                      |
-| PATCH                | `/admin/categories/:categoryId`       | Admin         | partial update                                                                                                         |
+| Method | Path                             | Auth   | Notes                                                                                                                                             |
+| ------ | -------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/products/search`               | Public | contract shape; `X-Search-Fallback: mongo` when degraded; 422 on bad params; 429 over 60/min/IP                                                   |
+| POST   | `/admin/search/reindex`          | Admin  | 200 `{ index, indexed, durationMs }`; 503 if search not configured or rebuild fails (old index kept); 409 if another sync/reindex holds the lease |
+| GET    | `/categories`, `/products/:slug` | Public | unchanged shape, now cached                                                                                                                       |
 
-Error codes used: `VENDOR_NOT_APPROVED` (403), `INVALID_STATE_TRANSITION` (409), `SERVICE_UNAVAILABLE` (503), plus existing ones. Product images in vendor responses carry `{ key, alt?, url }`.
+CORS now also exposes `X-Search-Fallback`.
 
-Schema changes: new collections `vendors`, `categories`, `products`, `auditLogs`, exactly as DATABASE_SCHEMA.md (indexes created by `Model.init()` at boot). No changes to `users` / `refreshTokens`.
+## Schema changes
 
-## Environment variables (server/.env)
+New collections: `searchOutbox` (`productId, op, attempts, nextAttemptAt, lastError, createdAt`; indexes `{nextAttemptAt}`, `{productId}`) and `jobLocks` (`_id, lockedUntil, owner`), as in DATABASE_SCHEMA supporting collections (I added the `{productId}` index). New audit action `search.reindexed` (entityType `search`, entityId = acting admin id because the audit schema needs an ObjectId).
 
-| Variable                                     | Required                | Notes                                                                           |
-| -------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------- |
-| `S3_BUCKET`                                  | no                      | enables uploads; without it presign answers 503                                 |
-| `S3_REGION`                                  | only if `S3_BUCKET` set | e.g. `ap-south-1`                                                               |
-| `S3_PUBLIC_BASE_URL`                         | no                      | CDN / base URL for images; default `https://<bucket>.s3.<region>.amazonaws.com` |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | when uploads are used   | standard AWS variables read by the SDK; never commit, never in the frontend     |
+## Environment variables
 
-New dependencies (server): `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`. Run `npm install` at the repo root to refresh `package-lock.json`.
-
-S3 bucket setup (not yet exercised against real AWS): block public listing; allow public `GetObject` only on `products/*`; CORS must allow `PUT` from the frontend origin with header `Content-Type`.
-
-## Dev workflow for approving a vendor (no admin UI yet)
-
-1. `npm run seed:admin -w server`, then log in as the admin (`POST /api/v1/auth/login`) to get an access token.
-2. `GET /api/v1/admin/vendors?status=pending` to find the shop id.
-3. `PATCH /api/v1/admin/vendors/<id>/status` with `{ "status": "approved" }`.
-4. Create at least one category: `POST /api/v1/admin/categories` with `{ "name": "Clothing" }`.
+None new. Uses `ELASTICSEARCH_URL`, `REDIS_URL`, `MONGODB_URI` (all existing).
 
 ## Verification
 
-Run in a reconstructed copy of the repo with a real MongoDB 8.3.7 (replica set via mongodb-memory-server, system binary): 148 server tests passing (new: shops 15, catalog 41, uploads 19, unit 20; plus the existing `users` and updated `rbac` suites); 32 client tests passing (new: money 22, uploads 2; plus `access`); `vite build` succeeded. A real `createStorage` call produced a URL whose signature covers `content-length` and `content-type`. Not run: the other Phase 1 suites that were not shared (auth, password, rateLimit, seedAdmin, env, app, health, logger), your real ESLint/Prettier configs and CI, real S3, a real browser.
+Run in a sandbox with real MongoDB 8.3.7 (replica set) and real Redis; **no real Elasticsearch**.
+
+- Server: 308 tests pass (243 existing + 65 new). Client: 50 tests pass; `vite build` OK; ESLint clean; Prettier clean.
+- Real Redis check: cache round-trip and TTL OK; with Redis killed, get/set/del degrade to misses without throwing; the rate limiter still enforces its limit via the in-memory fallback.
+- Real `server.js` boot with Redis and ES both unreachable: starts, `/health/ready` = `degraded`, search = 200 + `X-Search-Fallback: mongo`, categories 200.
+- Elasticsearch logic is tested against an in-memory fake (`tests/fakeSearch.js`) and a mock client (request bodies, versioning flags, alias swap actions).
+
+**Not verified (needs your Docker stack):**
+
+1. Real ES: mapping accepted, query DSL results/relevance, `external_gte` on delete, alias swap during a concurrent query loop.
+2. "Visible in search within 10 s, p95 over 20 runs".
+3. `npm run reindex` on 1,000 seeded products with zero failed concurrent searches.
+4. "Cached product detail p95 < 50 ms vs uncached" (not measured).
+5. A real browser pass of the search UI.
+
+Commands: `docker compose up -d --wait`, `npm run dev:server`, create an approved vendor + product (see Phase 2 dev workflow), wait ~2 s, `curl 'localhost:4000/api/v1/products/search?q=...'`; `docker compose stop elasticsearch` and repeat to see `X-Search-Fallback`; `npm run reindex`.
 
 ## Known issues
 
-- Upload enforcement by S3 (size and type in the signature) is verified only by inspecting the signed URL, not with a real upload; bucket CORS is unverified.
-- Images uploaded but never saved on a product stay in S3 (no cleanup). Phase 9: lifecycle rule.
-- Deactivating a category does not hide its products; it only blocks new products in it.
-- No admin endpoint exists yet to suspend a product (`PATCH /admin/products/:id/status` is Phase 8); the vendor-side suspended rules are tested by setting the status directly.
-- Product PATCH uses load-modify-save: concurrent edits of different fields merge, the same field is last-write-wins.
-- Client has no UI for product attributes or shop logo (the API supports both) and no public shop page yet.
-- Phase 1 known issues (access tokens valid up to 15 min after suspension or password change, two-tab refresh race, address VersionError, 100 ms limiter wait with Redis down) are unchanged.
+- Category rename / re-parent / deactivation is not propagated to the index (`categoryIds`) or caches; run a reindex after such changes. Deactivating a category still does not hide its products (Phase 2 issue).
+- A vendor with a very large catalog enqueues all its products inside one transaction on status change; fine for MVP volumes.
+- Reindex runs inside the HTTP request; for catalogs much larger than a few thousand products move it to a background job.
+- Search results may show `inStock` up to 60 s stale (cache) and index lag (~2 s sync + ES refresh).
+- Mongo fallback first loads all approved shops (`$in`); fine for MVP.
+- Dependencies in `shops`/`products` services (`searchOutbox`, `cache`) are required parameters; any new caller must pass them.
+- Phase 1/2 known issues unchanged. Doc conflict: API_CONTRACTS says a `rejected` vendor is terminal, code/constants allow `rejected -> approved`.
 
-## Next-phase prerequisites (Phase 3: Search + caching)
+## Next-phase prerequisites (Phase 4: Cart + coupons)
 
-- Review and approve Phase 2, then create the branch.
-- Product writes (create, update, status change, stock crossing zero) and vendor status changes must enqueue `searchOutbox` entries in the same transaction as the write. Phase 2 product writes are plain saves and will need to move into transactions.
-- Register `GET /products/search` before `GET /products/:slug` in `products.routes.js`.
-- Add cache invalidation for `cache:product:{slug}` and `cache:categories` (category changes in `categories.service.js`, product changes in `products.service.js`).
-- Decide ES/Redis hosting (V4) if deploying soon.
+- Review and approve Phase 3, then create the branch.
+- Cart pricing/stock preview must read Mongo, never the cache or the search index.
+- Run the real-ES checks above before relying on search in a demo; decide ES/Redis hosting (V4) if deploying soon.

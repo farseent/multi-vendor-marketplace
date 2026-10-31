@@ -1,4 +1,5 @@
-import { VENDOR_TRANSITIONS } from '../../config/constants.js';
+import mongoose from 'mongoose';
+import { CACHE, VENDOR_TRANSITIONS } from '../../config/constants.js';
 import { AppError } from '../../lib/AppError.js';
 import { pageMeta, skipFor } from '../../lib/pagination.js';
 import { isDuplicateOn, shortId, slugify } from '../../lib/slug.js';
@@ -10,7 +11,15 @@ const notFound = () => new AppError('NOT_FOUND', 404, 'Shop not found');
 const MAX_SLUG_ATTEMPTS = 5;
 
 /** Shop rules: one shop per vendor user, admin approval, commission override. */
-export function createShopsService({ audit, storage = null }) {
+export function createShopsService({ audit, storage = null, searchOutbox, cache }) {
+  // A shop's state decides whether its products are public and what shop name they show, so a
+  // change must reach the search index (outbox, same transaction) and the cached product pages.
+  async function dropProductCaches(slugs) {
+    for (let i = 0; i < slugs.length; i += 500) {
+      await cache.del(...slugs.slice(i, i + 500).map(CACHE.keys.product));
+    }
+  }
+
   const logoUrl = (key) => (key && storage ? storage.publicUrl(key) : null);
 
   // What the shop owner sees (everything, including status and commission).
@@ -74,10 +83,19 @@ export function createShopsService({ audit, storage = null }) {
         ]);
       }
       // The slug is deliberately not regenerated: shop URLs must stay stable.
+      const renamed = patch.shopName !== undefined && patch.shopName !== shop.shopName;
       if (patch.shopName !== undefined) shop.shopName = patch.shopName;
       if (patch.description !== undefined) shop.description = patch.description ?? undefined;
       if (patch.logoKey !== undefined) shop.logoKey = patch.logoKey ?? undefined;
-      await shop.save();
+      if (renamed) {
+        const slugs = await mongoose.connection.transaction(async (session) => {
+          await shop.save({ session });
+          return searchOutbox.enqueueVendorProducts(shop._id, { session });
+        });
+        await dropProductCaches(slugs);
+      } else {
+        await shop.save();
+      }
       return presentOwn(shop);
     },
 
@@ -119,18 +137,26 @@ export function createShopsService({ audit, storage = null }) {
         );
       }
       // Conditional update: if two admins act at once, only the one that saw `from` wins.
-      const updated = await Vendor.findOneAndUpdate(
-        { _id: shop._id, status: from },
-        { status },
-        { returnDocument: 'after' },
-      );
-      if (!updated) {
-        throw new AppError(
-          'INVALID_STATE_TRANSITION',
-          409,
-          'Shop status changed, reload and retry',
+      const { updated, slugs } = await mongoose.connection.transaction(async (session) => {
+        const doc = await Vendor.findOneAndUpdate(
+          { _id: shop._id, status: from },
+          { status },
+          { returnDocument: 'after', session },
         );
-      }
+        if (!doc) {
+          throw new AppError(
+            'INVALID_STATE_TRANSITION',
+            409,
+            'Shop status changed, reload and retry',
+          );
+        }
+        // Every product of this shop becomes (in)visible: re-sync them all with the status change.
+        return {
+          updated: doc,
+          slugs: await searchOutbox.enqueueVendorProducts(shop._id, { session }),
+        };
+      });
+      await dropProductCaches(slugs);
       await audit.record(actor, {
         action: 'vendor.status_changed',
         entityType: 'vendor',

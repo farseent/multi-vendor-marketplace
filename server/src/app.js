@@ -10,6 +10,8 @@ import { createLimiters } from './middleware/rateLimit.js';
 import { authorize } from './middleware/rbac.js';
 import { requestId } from './middleware/requestId.js';
 import { createLoadShop } from './middleware/shop.js';
+import { createCache } from './lib/cache.js';
+import { createJobLocks } from './jobs/jobLock.js';
 import { createAuditService } from './modules/audit/audit.service.js';
 import { createAuthController } from './modules/auth/auth.controller.js';
 import { createAuthRouter } from './modules/auth/auth.routes.js';
@@ -22,6 +24,14 @@ import { createProductsController } from './modules/catalog/products.controller.
 import { createProductsRouter } from './modules/catalog/products.routes.js';
 import { createProductsService } from './modules/catalog/products.service.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
+import {
+  createSearchAdminController,
+  createSearchController,
+} from './modules/search/search.controller.js';
+import { createSearchOutbox } from './modules/search/search.outbox.js';
+import { createReindexer } from './modules/search/search.reindex.js';
+import { createSearchRouter } from './modules/search/search.routes.js';
+import { createSearchService } from './modules/search/search.service.js';
 import { createShopsController } from './modules/shops/shops.controller.js';
 import { createShopsRouter } from './modules/shops/shops.routes.js';
 import { createShopsService } from './modules/shops/shops.service.js';
@@ -37,6 +47,8 @@ import { createUsersService } from './modules/users/users.service.js';
  * `redis` is optional: without it the rate limiters use their in-memory counters.
  * `storage` is optional too ({ publicUrl, presignPut }, see lib/s3.js): without it image
  * uploads answer 503 and image URLs are null.
+ * `searchIndex` is optional too (see modules/search/search.index.js): without it search answers
+ * from the Mongo fallback and the reindex endpoint answers 503.
  */
 export function createApp({
   nodeEnv,
@@ -46,6 +58,7 @@ export function createApp({
   authConfig,
   redis = null,
   storage = null,
+  searchIndex = null,
   trustProxy = 0,
 }) {
   const app = express();
@@ -54,7 +67,13 @@ export function createApp({
   app.use(requestId);
   app.use(httpLogger(logger));
   app.use(helmet());
-  app.use(cors({ origin: corsOrigins, credentials: true, exposedHeaders: ['X-Request-Id'] }));
+  app.use(
+    cors({
+      origin: corsOrigins,
+      credentials: true,
+      exposedHeaders: ['X-Request-Id', 'X-Search-Fallback'],
+    }),
+  );
   // Phase 5: mount the raw-body webhook route BEFORE this line (signature needs the raw bytes).
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
@@ -77,9 +96,15 @@ export function createApp({
 
   // --- Phase 2: shops, catalog, uploads ---
   const audit = createAuditService();
-  const shopsService = createShopsService({ audit, storage });
-  const categoriesService = createCategoriesService({ audit });
-  const productsService = createProductsService({ storage });
+  // --- Phase 3: search + caching ---
+  const cache = createCache({ redis, logger });
+  const searchOutbox = createSearchOutbox();
+  const searchService = createSearchService({ searchIndex, cache, storage, logger });
+  const reindexer = createReindexer({ searchIndex, jobLocks: createJobLocks(), logger });
+
+  const shopsService = createShopsService({ audit, storage, searchOutbox, cache });
+  const categoriesService = createCategoriesService({ audit, cache });
+  const productsService = createProductsService({ storage, searchOutbox, cache });
   const uploadsService = createUploadsService({ storage });
   const loadShop = createLoadShop(shopsService);
 
@@ -95,7 +120,13 @@ export function createApp({
     createUsersRouter({ controller: createUsersController({ usersService }), authenticate }),
     createShopsRouter({ controller: createShopsController({ shopsService }) }),
     createCategoriesRouter({ controller: createCategoriesController({ categoriesService }) }),
-    createProductsRouter({ controller: createProductsController({ productsService }), loadShop }),
+    createProductsRouter({
+      controller: createProductsController({ productsService }),
+      searchController: createSearchController({ searchService }),
+      loadShop,
+      limiters,
+    }),
+    createSearchRouter({ adminController: createSearchAdminController({ reindexer, audit }) }),
     createUploadsRouter({
       controller: createUploadsController({ uploadsService }),
       loadShop,

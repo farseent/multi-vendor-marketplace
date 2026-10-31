@@ -3,6 +3,8 @@ import { buildAuthConfig } from './config/auth.js';
 import { parseEnv } from './config/env.js';
 import { connectMongo, disconnectMongo, pingMongo } from './lib/db.js';
 import { createEsClient, pingEs } from './lib/es.js';
+import { createJobLocks, JobLock } from './jobs/jobLock.js';
+import { createSearchSyncJob } from './jobs/searchSync.js';
 import { createLogger } from './lib/logger.js';
 import { createRedis, pingRedis } from './lib/redis.js';
 import { createStorage } from './lib/s3.js';
@@ -11,6 +13,8 @@ import { AuditLog } from './modules/audit/audit.model.js';
 import { Category } from './modules/catalog/categories.model.js';
 import { Product } from './modules/catalog/products.model.js';
 import { createHealthService } from './modules/health/health.service.js';
+import { createSearchIndex } from './modules/search/search.index.js';
+import { SearchOutbox } from './modules/search/search.model.js';
 import { Vendor } from './modules/shops/shops.model.js';
 import { User } from './modules/users/users.model.js';
 
@@ -47,7 +51,16 @@ async function main() {
     Category.init(),
     Product.init(),
     AuditLog.init(),
+    SearchOutbox.init(),
+    JobLock.init(),
   ]);
+
+  // Elasticsearch is optional at boot (D12): if it is down, search uses the Mongo fallback and
+  // the sync job creates the index as soon as ES answers.
+  const searchIndex = createSearchIndex({ client: es });
+  await searchIndex
+    .ensureIndex()
+    .catch((err) => logger.warn({ err: err.message }, 'Elasticsearch not ready at boot'));
 
   const healthService = createHealthService({
     logger,
@@ -66,14 +79,19 @@ async function main() {
     authConfig: buildAuthConfig(env),
     redis,
     storage,
+    searchIndex,
     trustProxy: env.TRUST_PROXY,
   });
   const server = app.listen(env.PORT, () => logger.info({ port: env.PORT }, 'API listening'));
+
+  const searchSync = createSearchSyncJob({ searchIndex, jobLocks: createJobLocks(), logger });
+  searchSync.start();
 
   let closing = false;
   const shutdown = (signal) => {
     if (closing) return;
     closing = true;
+    searchSync.stop();
     logger.info({ signal }, 'Shutting down');
     setTimeout(() => process.exit(1), 10_000).unref();
     server.close(async () => {

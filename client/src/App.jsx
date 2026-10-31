@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
 import ProductPage from './pages/ProductPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
+import SearchPage from './pages/SearchPage.jsx';
 import StatusPage from './pages/StatusPage.jsx';
 import VendorProductFormPage from './pages/VendorProductFormPage.jsx';
 import VendorProductsPage from './pages/VendorProductsPage.jsx';
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
         <Route path="register-vendor" element={<RegisterPage vendor />} />
+        <Route path="search" element={<SearchPage />} />
         <Route path="products/:slug" element={<ProductPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path="account" element={<AccountPage />} />
