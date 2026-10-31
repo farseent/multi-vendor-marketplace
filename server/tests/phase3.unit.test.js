@@ -255,11 +255,9 @@ describe('createSearchIndex adapter (mock ES client)', () => {
   });
 
   it('ensureIndex tolerates losing the boot race (index already exists) and still attaches the alias', async () => {
-    const create = vi
-      .fn()
-      .mockRejectedValue({
-        meta: { body: { error: { type: 'resource_already_exists_exception' } } },
-      });
+    const create = vi.fn().mockRejectedValue({
+      meta: { body: { error: { type: 'resource_already_exists_exception' } } },
+    });
     const putAlias = vi.fn().mockResolvedValue({});
     const getAlias = vi.fn().mockRejectedValue({ meta: { statusCode: 404 } });
     const index = createSearchIndex({
