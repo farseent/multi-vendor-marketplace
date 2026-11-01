@@ -78,3 +78,28 @@ export const CACHE = {
   },
   ttlSeconds: { product: 5 * 60, categories: 60 * 60, search: 60 },
 };
+
+// Cart and coupons (Phase 4)
+export const CART = {
+  maxItems: 30, // distinct products per cart (DATABASE_SCHEMA carts)
+  maxQuantity: 10, // per product
+};
+export const COUPON = {
+  maxPercent: 90,
+  minFixedPaise: 100,
+  statuses: ['active', 'disabled'],
+  scopes: ['platform', 'vendor'],
+  types: ['percent', 'fixed'],
+};
+// Why a coupon was refused. Sent to the client as COUPON_INVALID details.reason.
+export const COUPON_REASONS = [
+  'not_found',
+  'disabled',
+  'not_started',
+  'expired',
+  'empty_cart',
+  'wrong_vendor',
+  'below_min_order',
+  'total_limit_reached',
+  'user_limit_reached',
+];

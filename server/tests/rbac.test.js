@@ -16,7 +16,7 @@ const call = (route, headers = {}) =>
 const routes = listApiRoutes(app);
 
 describe('route table', () => {
-  it('enumerates the registered Phase 1 and 2 routes (guards the guard tests below)', () => {
+  it('enumerates the registered Phase 1-4 routes (guards the guard tests below)', () => {
     const keys = routes.map((r) => `${r.method} ${r.path}`);
     expect(keys).toEqual(
       expect.arrayContaining([
@@ -36,6 +36,14 @@ describe('route table', () => {
         // Phase 3
         'GET /api/v1/products/search',
         'POST /api/v1/admin/search/reindex',
+        // Phase 4
+        'GET /api/v1/cart',
+        'PUT /api/v1/cart/items/:productId',
+        'POST /api/v1/cart/coupon',
+        'POST /api/v1/vendor/coupons',
+        'PATCH /api/v1/vendor/coupons/:couponId',
+        'POST /api/v1/admin/coupons',
+        'PATCH /api/v1/admin/coupons/:couponId',
       ]),
     );
   });

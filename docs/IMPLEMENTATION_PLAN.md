@@ -67,9 +67,9 @@ Acceptance:
 Scope: cart endpoints, price/stock preview, coupon CRUD (vendor, admin), coupon validation service, cart UI.
 Acceptance:
 
-- Cart quantity > 10 or product not purchasable returns 422/409 respectively; inactive products show as unavailable in preview.
-- Coupon validation covers 10 table-driven cases: expired, not started, disabled, below min order, over total limit, over per-user limit, wrong vendor scope, percent with cap, fixed larger than subtotal (clamped to subtotal), valid.
-- Vendor coupon applies only to that vendor's items; discount allocation sums exactly to total discount (property test over 1,000 random carts).
+- [x] Cart quantity > 10 or product not purchasable returns 422/409 respectively; inactive products show as unavailable in preview.
+- [x] Coupon validation covers 10 table-driven cases: expired, not started, disabled, below min order, over total limit, over per-user limit, wrong vendor scope, percent with cap, fixed larger than subtotal (clamped to subtotal), valid.
+- [x] Vendor coupon applies only to that vendor's items; discount allocation sums exactly to total discount (property test over 1,000 random carts).
 
 ## Phase 5: Checkout, inventory, payments
 

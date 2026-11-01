@@ -17,12 +17,18 @@ import { createAuthController } from './modules/auth/auth.controller.js';
 import { createAuthRouter } from './modules/auth/auth.routes.js';
 import { createAuthService } from './modules/auth/auth.service.js';
 import { createAccessTokenService } from './modules/auth/auth.tokens.js';
+import { createCartController } from './modules/cart/cart.controller.js';
+import { createCartRouter } from './modules/cart/cart.routes.js';
+import { createCartService } from './modules/cart/cart.service.js';
 import { createCategoriesController } from './modules/catalog/categories.controller.js';
 import { createCategoriesRouter } from './modules/catalog/categories.routes.js';
 import { createCategoriesService } from './modules/catalog/categories.service.js';
 import { createProductsController } from './modules/catalog/products.controller.js';
 import { createProductsRouter } from './modules/catalog/products.routes.js';
 import { createProductsService } from './modules/catalog/products.service.js';
+import { createCouponsController } from './modules/coupons/coupons.controller.js';
+import { createCouponsRouter } from './modules/coupons/coupons.routes.js';
+import { createCouponsService } from './modules/coupons/coupons.service.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
 import {
   createSearchAdminController,
@@ -108,6 +114,10 @@ export function createApp({
   const uploadsService = createUploadsService({ storage });
   const loadShop = createLoadShop(shopsService);
 
+  // --- Phase 4: cart + coupons ---
+  const couponsService = createCouponsService({ audit });
+  const cartService = createCartService({ couponsService, storage });
+
   // Module routers declare full paths relative to /api/v1 (no nesting). Keeping the list on the
   // app lets tests enumerate every registered route (see tests/helpers.js listApiRoutes).
   const routers = [
@@ -131,6 +141,11 @@ export function createApp({
       controller: createUploadsController({ uploadsService }),
       loadShop,
       limiters,
+    }),
+    createCartRouter({ controller: createCartController({ cartService }), authenticate }),
+    createCouponsRouter({
+      controller: createCouponsController({ couponsService }),
+      loadShop,
     }),
   ];
   app.set('apiRouters', routers);

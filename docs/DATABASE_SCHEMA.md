@@ -138,9 +138,9 @@ Rule: `netPayoutPaise = grossPaise - commissionPaise - refundAdjustmentPaise`, f
 | scope | `platform` or `vendor`; vendor coupons require `vendorId` |
 | fundedBy | `platform` for platform scope; `vendor` for vendor scope |
 | type, value | `percent` (1-90) or `fixed` (paise ≥ 100) |
-| minOrderPaise, maxDiscountPaise? | ints |
+| minOrderPaise, maxDiscountPaise? | ints; `minOrderPaise` defaults to 0 and is measured on the lines the coupon covers; `maxDiscountPaise` is allowed on `percent` coupons only |
 | startsAt, expiresAt | expiresAt > startsAt |
-| usageLimitTotal?, usageLimitPerUser | ints ≥ 1 |
+| usageLimitTotal?, usageLimitPerUser | ints ≥ 1; `usageLimitTotal` unset = unlimited; `usageLimitPerUser` defaults to 1 |
 | usedCount | int, maintained atomically |
 | status | `active                                                   | disabled` |
 
@@ -164,7 +164,7 @@ Indexes: `{code:1}` unique; `{vendorId:1}`.
 - `webhookEvents`: `provider, eventId (unique with provider), eventType, status: received|processed|failed|ignored, attempts, receivedAt, processedAt?, error?`; TTL 90 days on `receivedAt`.
 - `searchOutbox`: `productId, op:'upsert|delete', attempts, nextAttemptAt, lastError?, createdAt`; indexes `{nextAttemptAt:1}` and `{productId:1}`.
   `op` is advisory; the sync job determines whether to index or delete using the current product and vendor state.
-- `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; written by admin mutations for `vendor.status_changed`, `vendor.commission_changed`, `category.created`, `category.updated`, and `search.reindexed`; index `{entityType:1,entityId:1,createdAt:-1}`.
+- `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; written by admin mutations for `vendor.status_changed`, `vendor.commission_changed`, `category.created`, `category.updated`, and `search.reindexed`, `coupon.created`, and `coupon.updated`; index `{entityType:1,entityId:1,createdAt:-1}`.
 - `reconciliationReports`: `runAt, totals{...}, mismatches[], status`.
 - `jobLocks`: `{ _id: jobName, lockedUntil, owner }`.
 

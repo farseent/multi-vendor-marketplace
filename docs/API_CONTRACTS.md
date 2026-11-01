@@ -63,6 +63,51 @@ Base URL: `/api/v1`. JSON only (webhook uses raw body). Auth: `Authorization: Be
 | POST   | /cart/coupon           | C   | body `{ code }`, validates and returns discount preview |
 | DELETE | /cart/coupon           | C   |                                                         |
 
+#### Cart and coupon details (Phase 4)
+
+Every cart endpoint (`GET/DELETE /cart`, `PUT/DELETE /cart/items/:productId`, `POST/DELETE /cart/coupon`) returns the whole priced cart. Customers only (vendor/admin tokens: 403).
+
+```json
+{
+  "items": [
+    {
+      "productId": "66f1...b2",
+      "slug": "handloom-cotton-kurta-x7k2",
+      "title": "Handloom Cotton Kurta",
+      "imageUrl": "https://cdn.example/products/...webp",
+      "shop": { "name": "Loom & Co", "slug": "loom-co" },
+      "quantity": 2,
+      "status": "ok",
+      "unitPricePaise": 149900,
+      "lineSubtotalPaise": 299800,
+      "discountPaise": 29980,
+      "lineNetPaise": 269820
+    }
+  ],
+  "itemCount": 2,
+  "currency": "INR",
+  "subtotalPaise": 299800,
+  "discountPaise": 29980,
+  "shippingPaise": 0,
+  "totalPaise": 269820,
+  "coupon": { "code": "WELCOME10", "scope": "platform", "type": "percent", "discountPaise": 29980 },
+  "couponError": null,
+  "hasIssues": false
+}
+```
+
+- Line `status`: `ok`, `insufficient_stock` (adds `available`; still priced, counted in totals), or `unavailable` (product not active or shop not approved; only `productId`, `quantity`, `status`, `title`; not priced, not counted).
+- `couponError: { code, reason }` (with `coupon: null` and no discount) when the saved coupon is no longer valid.
+- `PUT /cart/items/:productId` body `{ quantity }` (integer 0-10; 0 removes): 422 above 10 or non-integer; 409 `CONFLICT` if the product cannot be bought (including a non-existent id) or the cart already has 30 distinct products; 409 `OUT_OF_STOCK` with `details: [{ productId, available }]` if quantity exceeds stock.
+- `POST /cart/coupon` body `{ code }` (case-insensitive): 422 `COUPON_INVALID` with `details: { reason }`, where reason is one of `not_found, disabled, not_started, expired, empty_cart, wrong_vendor, below_min_order, total_limit_reached, user_limit_reached`. A refused code leaves the cart's existing coupon unchanged.
+- `DELETE` endpoints are idempotent.
+
+#### Coupons (Phase 4)
+
+`GET/POST /vendor/coupons`, `GET/PATCH /vendor/coupons/:couponId` (approved shop; own coupons; other vendors' ids: 404) and `GET/POST /admin/coupons`, `GET/PATCH /admin/coupons/:couponId` (platform coupons only). List: `?status=active|disabled&page&limit`.
+Create body: `{ code, type: "percent"|"fixed", value, minOrderPaise?=0, maxDiscountPaise? (percent only), startsAt, expiresAt (ISO-8601 with timezone), usageLimitTotal?, usageLimitPerUser?=1, status?="active" }`. `scope`, `fundedBy` and `vendorId` are set by the server. 422 field errors use `body.<field>` paths; duplicate code: 409 `CONFLICT`.
+Update body (at least one of): `value, minOrderPaise, maxDiscountPaise (null clears), startsAt, expiresAt, usageLimitTotal (null clears), usageLimitPerUser, status`. `code`, `type` and `usedCount` cannot be changed.
+
 ### Checkout, orders, payments
 
 | POST | /checkout                                      | C                  | `Idempotency-Key`; returns provider order details        |

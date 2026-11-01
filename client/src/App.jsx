@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './auth/ProtectedRoute.jsx';
 import Layout from './components/Layout.jsx';
 import AccountPage from './pages/AccountPage.jsx';
+import CartPage from './pages/CartPage.jsx';
 import HomePage from './pages/HomePage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
@@ -26,6 +27,10 @@ export default function App() {
         <Route path="products/:slug" element={<ProductPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path="account" element={<AccountPage />} />
+        </Route>
+        {/* UX only: the API enforces the customer role on every /cart request. */}
+        <Route element={<ProtectedRoute roles={['customer']} />}>
+          <Route path="cart" element={<CartPage />} />
         </Route>
         {/* UX only: the API enforces the vendor role on every /vendor/* request. */}
         <Route element={<ProtectedRoute roles={['vendor']} />}>

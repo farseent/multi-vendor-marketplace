@@ -1,81 +1,83 @@
 # HANDOVER.md
 
-## Current state (after Phase 3: Search + caching)
+## Current state (after Phase 4: Cart + coupons)
 
-Phase 3 is implemented. Branch suggestion: `phase-3-search-caching`. No Phase 4+ code exists. Phases 1-2 behave as before, except that product and shop writes now run inside Mongo transactions (see "Key decisions").
+Phase 4 is implemented. Branch suggestion: `phase-4-cart-coupons`. No Phase 5+ code exists (no checkout, orders, payments, or coupon reservation). Phases 1-3 behave as before.
 
-- **Search endpoint:** `GET /products/search` (public, 60/min/IP) with `q, categoryId, vendor, minPrice, maxPrice, minRating, inStock, sort, page, limit`. Prices are integer paise. `page x limit` is capped at 10,000 (Elasticsearch result window), otherwise 422. Registered above `/products/:slug` in `products.routes.js`.
-- **Elasticsearch index:** alias `products` over concrete indices `products_v0` (first boot) / `products_v<timestamp>` (after reindex). Strict mapping; only public fields are indexed (no `stockQty`, `sku`, `vendorId`). Only `active` products of `approved` shops are indexed.
-- **Outbox sync:** every product create-as-active / update / archive / stock-crossing-zero and every shop status change or rename writes `searchOutbox` entries in the SAME Mongo transaction as the write. `jobs/searchSync.js` (every 2 s, lease `jobLocks._id='searchSync'`) re-reads the product, bulk-applies index/delete with external versioning, then deletes the entries.
-- **Mongo fallback:** if ES is down or not configured, search answers 200 from a Mongo `$text` query (same filters/sorts, no fuzziness) with header `X-Search-Fallback: mongo`. Fallback answers are never cached.
-- **Reindex:** `npm run reindex` (root or `-w server`) and `POST /admin/search/reindex` (admin, audited as `search.reindexed`). Builds a new index, bulk loads, atomically swaps the alias, deletes the old index. The sync job pauses during it (same lease).
-- **Redis cache (fail-open, 100 ms timeout, warn logs, 5 s circuit breaker for reads/writes):** `cache:product:{slug}` 5 min, `cache:categories` 1 h, `cache:search:{hash}` 60 s. Product keys are deleted on product update/archive/stock change and on shop status change/rename (all that shop's products). Category key is deleted on admin category create/update. Search results: TTL only.
-- **Client:** `/search` page (URL holds filters; prices typed in rupees, sent as paise), header search box, home page link.
+- **Cart (customers only):** `GET /cart`, `PUT|DELETE /cart/items/:productId`, `DELETE /cart`, `POST|DELETE /cart/coupon`. The cart stores only `productId` + `quantity` (+ `couponCode`). Every response is the whole priced preview, read from Mongo (never cache or search index). Max 10 per product (422 above), max 30 distinct products (409).
+- **Preview lines:** `status: ok | insufficient_stock | unavailable`. `unavailable` (product not `active` or shop not `approved`) is shown but not priced or counted. `insufficient_stock` is priced, carries `available`, and sets `hasIssues`. Totals: `total = subtotal - discount` (shipping 0). Each line has `discountPaise` and `lineNetPaise` (ready for the Phase 5 sub-order snapshot).
+- **Add rules:** a product that cannot be bought (draft/archived/suspended/unapproved shop/non-existent id) is 409 `CONFLICT`; quantity above current stock is 409 `OUT_OF_STOCK` with `details: [{productId, available}]`.
+- **Coupons:** vendor CRUD (`/vendor/coupons`, approved shop, own coupons only, 404 otherwise) and admin CRUD (`/admin/coupons`, platform coupons only, audited as `coupon.created` / `coupon.updated`). `code`, `type`, `scope`, `vendorId`, `usedCount` are not editable.
+- **Coupon validation:** one pure function, `evaluateCoupon` in `modules/coupons/coupons.rules.js` (no DB, no clock). Returns `{ ok:false, reason }` or `{ ok:true, discountPaise, lineDiscounts }`. Percent uses `roundHalfUp`, optional `maxDiscountPaise` cap (percent only), clamp to covered subtotal; allocation to lines uses largest remainder (`lib/money.js`) so shares sum exactly. A vendor coupon covers only that vendor's lines; `minOrderPaise` is measured on covered lines.
+- **Saved coupon:** `POST /cart/coupon` saves only a coupon valid right now (else 422 `COUPON_INVALID`, `details.reason`; the previous coupon is kept). On later reads the coupon is re-evaluated; if it stopped being valid the cart still answers 200 with `coupon: null`, `couponError: {code, reason}` and no discount.
+- **Client:** `/cart` page (customers; quantity select, remove, empty, coupon apply/remove, totals, warnings), "Add to cart" on the product page (adds to the existing quantity, capped at 10; login hint for anonymous users), header "Cart (n)" link for customers. There is no vendor/admin coupon UI yet (API only) and no checkout button (Phase 5).
 
-## Key decisions (proposed additions to DECISIONS.md)
+## Key decisions (proposed additions to DECISIONS.md: D39-D43, already drafted in the updated DECISIONS.md)
 
-- **D33 Product and shop writes run in transactions with the outbox entry** (replaces the Phase 2 plain saves). Mongo must be a replica set (already required).
-- **D34 The sync job re-reads current state; the outbox entry only means "look at this product again".** `op` is stored for humans. Replays are idempotent.
-- **D35 Index version = max(product.updatedAt, shop.updatedAt) in ms, `version_type=external_gte`.** (ARCHITECTURE said product.updatedAt only.) A product's visibility depends on its shop, so re-approving a shop must outrank the delete written while it was suspended. Deletes carry a version too.
-- **D36 An Elasticsearch outage does not consume an entry's attempts.** A failed request pauses the whole job with growing back-off (2 s up to 60 s). Only per-document rejections increment `attempts` (back-off up to 5 min); at 10 attempts the entry is logged at `error`, kept, and no longer claimed. A successful reindex deletes flagged entries older than itself.
-- **D37 Fixed name `products_v0` for the first index** so concurrent first boots cannot attach two indices to the alias.
-- **D38 Cache circuit breaker:** after a Redis failure, cache reads/writes are skipped for 5 s; deletes are always attempted.
-- Search is registered in `products.routes.js` (as HANDOVER Phase 2 required); the admin reindex route lives in `modules/search/search.routes.js`.
+- **D39** Cart stores ids + quantities only; reads price from Mongo; unavailable lines excluded from totals, insufficient-stock lines flagged.
+- **D40** Adding is strict (409/422), the preview only warns; cart writes are atomic single updates (no lost or duplicate lines under parallel requests).
+- **D41** Coupon rules are one pure function; check order, min-order-on-covered-lines, percent cap, clamp, largest-remainder allocation.
+- **D42** Coupon CRUD immutability, approved-shop requirement, 404 ownership, admin audit actions.
+- **D43** Saved cart coupon is re-evaluated on every read and reported as `couponError`, not as an error response.
 
 ## Relevant files
 
-New: `server/src/modules/search/` (`search.model` outbox, `.mapping`, `.query` pure ES-DSL builder, `.index` the only ES-touching file, `.docs` Mongo->documents, `.outbox`, `.fallback`, `.service`, `.reindex`, `.validator`, `.controller`, `.routes`), `server/src/jobs/` (`jobLock.js`, `searchSync.js`), `server/src/lib/cache.js`, `server/src/scripts/reindex.js`, `server/tests/` (`fakeSearch.js`, `phase3.unit.test.js`, `search.test.js`), `client/src/lib/search.js` (+ test), `client/src/pages/SearchPage.jsx`.
-Changed: `app.js`, `server.js`, `config/constants.js`, `middleware/rateLimit.js`, `catalog/products.{routes,service}.js`, `catalog/categories.service.js`, `shops/shops.service.js`, `tests/{db,helpers,rbac.test}.js`, `client/src/{App.jsx,components/Layout.jsx,pages/HomePage.jsx,pages/catalog.css}`, both `package.json` (script `reindex`).
+New (server): `src/lib/money.js` (`mulDivRoundHalfUp`, `allocateProportionally`); `src/modules/cart/` (`cart.model`, `.validator`, `.service`, `.controller`, `.routes`); `src/modules/coupons/` (`coupons.model`, `redemptions.model`, `coupons.rules`, `.validator`, `.service`, `.controller`, `.routes`); `tests/phase4.unit.test.js`, `tests/cart.test.js`, `tests/coupons.test.js`.
+New (client): `src/lib/cart.js` (+ `cart.test.js`), `src/components/AddToCart.jsx`, `src/pages/CartPage.jsx`, `src/pages/cart.css`.
+Changed: `server/src/app.js` (wiring), `server/src/config/constants.js` (`CART`, `COUPON`, `COUPON_REASONS`), `server/tests/db.js` (new models in cleanup), `server/tests/rbac.test.js` (Phase 4 routes in the route-table guard), `client/src/App.jsx`, `client/src/components/Layout.jsx`, `client/src/pages/ProductPage.jsx`.
+Dependencies: dev-only `fast-check` in `server` (the property-test tool named in TESTING.md).
 
 ## API changes
 
-| Method | Path                             | Auth   | Notes                                                                                                                                             |
-| ------ | -------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/products/search`               | Public | contract shape; `X-Search-Fallback: mongo` when degraded; 422 on bad params; 429 over 60/min/IP                                                   |
-| POST   | `/admin/search/reindex`          | Admin  | 200 `{ index, indexed, durationMs }`; 503 if search not configured or rebuild fails (old index kept); 409 if another sync/reindex holds the lease |
-| GET    | `/categories`, `/products/:slug` | Public | unchanged shape, now cached                                                                                                                       |
+| Method    | Path                              | Auth              | Notes                                                                    |
+| --------- | --------------------------------- | ----------------- | ------------------------------------------------------------------------ |
+| GET       | `/cart`                           | Customer          | priced preview                                                           |
+| PUT       | `/cart/items/:productId`          | Customer          | `{ quantity }` 0-10; 0 removes; 422 >10; 409 `CONFLICT`/`OUT_OF_STOCK`   |
+| DELETE    | `/cart/items/:productId`, `/cart` | Customer          | idempotent                                                               |
+| POST      | `/cart/coupon`                    | Customer          | `{ code }`; 422 `COUPON_INVALID` `details.reason`                        |
+| DELETE    | `/cart/coupon`                    | Customer          | idempotent                                                               |
+| GET/POST  | `/vendor/coupons`                 | Vendor (approved) | list own (`status`, `page`, `limit`) / create; 403 `VENDOR_NOT_APPROVED` |
+| GET/PATCH | `/vendor/coupons/:couponId`       | Vendor (approved) | other vendors' ids: 404                                                  |
+| GET/POST  | `/admin/coupons`                  | Admin             | platform coupons only; create audited                                    |
+| GET/PATCH | `/admin/coupons/:couponId`        | Admin             | update audited                                                           |
 
-CORS now also exposes `X-Search-Fallback`.
+Response shapes and reasons are documented in the updated API_CONTRACTS.md.
 
 ## Schema changes
 
-New collections: `searchOutbox` (`productId, op, attempts, nextAttemptAt, lastError, createdAt`; indexes `{nextAttemptAt}`, `{productId}`) and `jobLocks` (`_id, lockedUntil, owner`), as in DATABASE_SCHEMA supporting collections (I added the `{productId}` index). New audit action `search.reindexed` (entityType `search`, entityId = acting admin id because the audit schema needs an ObjectId).
+New collections: `carts` (`customerId` unique, `items[{productId, quantity 1-10, addedAt}]` max 30, `couponCode?`), `coupons` (fields and indexes as in DATABASE_SCHEMA; `usageLimitPerUser` defaults to 1, `minOrderPaise` to 0), `couponRedemptions` (model exists and is READ by the per-user limit check; nothing writes it until Phase 5). New audit actions `coupon.created`, `coupon.updated` (entityType `coupon`).
 
 ## Environment variables
 
-None new. Uses `ELASTICSEARCH_URL`, `REDIS_URL`, `MONGODB_URI` (all existing).
+None new.
 
 ## Verification
 
-Run in a sandbox with real MongoDB 8.3.7 (replica set) and real Redis; **no real Elasticsearch**.
+Run in a sandbox with real MongoDB 8.3.7 (single-node replica set via mongodb-memory-server with a system binary). **No real Redis or Elasticsearch was used** (Phase 4 does not touch them; the cart never reads the cache or index).
 
-- Server: 308 tests pass (243 existing + 65 new). Client: 50 tests pass; `vite build` OK; ESLint clean; Prettier clean.
-- Real Redis check: cache round-trip and TTL OK; with Redis killed, get/set/del degrade to misses without throwing; the rate limiter still enforces its limit via the in-memory fallback.
-- Real `server.js` boot with Redis and ES both unreachable: starts, `/health/ready` = `degraded`, search = 200 + `X-Search-Fallback: mongo`, categories 200.
-- Elasticsearch logic is tested against an in-memory fake (`tests/fakeSearch.js`) and a mock client (request bodies, versioning flags, alias swap actions).
+- Server: 409 tests pass (308 existing + 101 new). Client: 55 tests pass (50 existing + 5 new); `vite build` OK. ESLint clean; Prettier clean.
+- Acceptance: quantity >10 is 422, non-purchasable is 409, archived product shows `unavailable` in the preview; coupon validation table covers the 10 plan cases (+ extras) and integration tests cover the API reasons; the 1,000-run property tests verify that coupon line shares sum exactly to the discount (and that allocation is exact and bounded).
+- Parallel cart writes (6 different products into a new cart at once; the same product repeatedly) leave no lost and no duplicate lines.
 
-**Not verified (needs your Docker stack):**
+**Not verified:**
 
-1. Real ES: mapping accepted, query DSL results/relevance, `external_gte` on delete, alias swap during a concurrent query loop.
-2. "Visible in search within 10 s, p95 over 20 runs".
-3. `npm run reindex` on 1,000 seeded products with zero failed concurrent searches.
-4. "Cached product detail p95 < 50 ms vs uncached" (not measured).
-5. A real browser pass of the search UI.
-
-Commands: `docker compose up -d --wait`, `npm run dev:server`, create an approved vendor + product (see Phase 2 dev workflow), wait ~2 s, `curl 'localhost:4000/api/v1/products/search?q=...'`; `docker compose stop elasticsearch` and repeat to see `X-Search-Fallback`; `npm run reindex`.
+1. A real browser pass of the cart UI, add-to-cart on the product page, and the header link (components are only compiled by `vite build` and linted; there are no component tests).
+2. The outstanding Phase 3 checks that need your Docker stack (real ES mapping/relevance, 10 s search latency p95, `npm run reindex` on 1,000 products, cached product p95 < 50 ms) remain open as listed in the previous handover.
+3. Behavior against a real Redis for the cart (not used by this phase).
 
 ## Known issues
 
-- Category rename / re-parent / deactivation is not propagated to the index (`categoryIds`) or caches; run a reindex after such changes. Deactivating a category still does not hide its products (Phase 2 issue).
-- A vendor with a very large catalog enqueues all its products inside one transaction on status change; fine for MVP volumes.
-- Reindex runs inside the HTTP request; for catalogs much larger than a few thousand products move it to a background job.
-- Search results may show `inStock` up to 60 s stale (cache) and index lag (~2 s sync + ES refresh).
-- Mongo fallback first loads all approved shops (`$in`); fine for MVP.
-- Dependencies in `shops`/`products` services (`searchOutbox`, `cache`) are required parameters; any new caller must pass them.
-- Phase 1/2 known issues unchanged. Doc conflict: API_CONTRACTS says a `rejected` vendor is terminal, code/constants allow `rejected -> approved`.
+- A `fixed` coupon (or a stack of one) can clamp a cart total to **0**. Payment providers will not create a 0-amount order, so Phase 5 must decide: reject a 0 total at checkout, or skip the provider for zero-total orders.
+- Coupon usage limits become effective only when checkout writes `couponRedemptions` and increments `usedCount` (Phase 5). Until then the checks are exercised by tests that insert rows directly.
+- Coupon-code guessing is limited only by the global rate limiter (300 requests / 15 min / IP). No dedicated limiter was added because none is specified in ARCHITECTURE section 8; consider one in Phase 9.
+- No TTL/cleanup for abandoned carts.
+- No vendor or admin coupon UI; manage coupons through the API.
+- Carried over from Phase 3: category rename/re-parent/deactivation is not propagated to the index; reindex runs inside the HTTP request; `inStock` in search can be up to ~60 s stale; Mongo fallback loads all approved shops; API_CONTRACTS says a `rejected` vendor is terminal while code/constants allow `rejected -> approved`; two Phase 2 acceptance boxes (presign constraints; negative stock / non-integer price) are still unticked in IMPLEMENTATION_PLAN and were not touched in this phase.
 
-## Next-phase prerequisites (Phase 4: Cart + coupons)
+## Next-phase prerequisites (Phase 5: Checkout, inventory, payments)
 
-- Review and approve Phase 3, then create the branch.
-- Cart pricing/stock preview must read Mongo, never the cache or the search index.
-- Run the real-ES checks above before relying on search in a demo; decide ES/Redis hosting (V4) if deploying soon.
+- Review and approve Phase 4, then create the branch.
+- **Gate:** V1, V2, V3 (Razorpay Route behavior: holds, webhook payloads, test-mode capabilities) must be resolved before starting Phase 5.
+- Checkout must re-read price, stock and coupon from Mongo and re-run `evaluateCoupon` inside the transaction; reuse `lineDiscounts` for sub-order item snapshots (`discountPaise`, `lineNetPaise`); write `couponRedemptions(reserved)` and increment `usedCount` conditionally in that same transaction (D21); clear the cart on success.
+- Decide the zero-total order behavior (see Known issues).
+- Mount the raw-body webhook route before `express.json` in `app.js` (marked there).

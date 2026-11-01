@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
+import AddToCart from '../components/AddToCart.jsx';
 import { apiFetch } from '../lib/api.js';
 import { formatINR } from '../lib/money.js';
 import './catalog.css';
@@ -46,6 +47,7 @@ export default function ProductPage() {
         )}
       </p>
       <p>{product.inStock ? 'In stock' : 'Out of stock'}</p>
+      <AddToCart product={product} />
       {product.description && <p>{product.description}</p>}
       {attributes.length > 0 && (
         <dl className="attributes">
