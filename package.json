@@ -17,7 +17,8 @@
     "format:check": "prettier --check .",
     "test": "npm run test -w server && npm run test -w client",
     "build": "npm run build -w client",
-    "reindex": "npm run reindex -w server"
+    "reindex": "npm run reindex -w server",
+    "link-account": "npm run link-account -w server --"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

@@ -3,9 +3,12 @@ import ProtectedRoute from './auth/ProtectedRoute.jsx';
 import Layout from './components/Layout.jsx';
 import AccountPage from './pages/AccountPage.jsx';
 import CartPage from './pages/CartPage.jsx';
+import CheckoutPage from './pages/CheckoutPage.jsx';
 import HomePage from './pages/HomePage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
+import OrderPage from './pages/OrderPage.jsx';
+import OrdersPage from './pages/OrdersPage.jsx';
 import ProductPage from './pages/ProductPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
 import SearchPage from './pages/SearchPage.jsx';
@@ -28,9 +31,12 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="account" element={<AccountPage />} />
         </Route>
-        {/* UX only: the API enforces the customer role on every /cart request. */}
+        {/* UX only: the API enforces the customer role on every /cart, /checkout and /orders request. */}
         <Route element={<ProtectedRoute roles={['customer']} />}>
           <Route path="cart" element={<CartPage />} />
+          <Route path="checkout" element={<CheckoutPage />} />
+          <Route path="orders" element={<OrdersPage />} />
+          <Route path="orders/:orderId" element={<OrderPage />} />
         </Route>
         {/* UX only: the API enforces the vendor role on every /vendor/* request. */}
         <Route element={<ProtectedRoute roles={['vendor']} />}>

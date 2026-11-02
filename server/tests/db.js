@@ -8,7 +8,11 @@ import { Product } from '../src/modules/catalog/products.model.js';
 import { Coupon } from '../src/modules/coupons/coupons.model.js';
 import { CouponRedemption } from '../src/modules/coupons/redemptions.model.js';
 import { JobLock } from '../src/jobs/jobLock.js';
+import { Order, SubOrder, Counter } from '../src/modules/orders/orders.model.js';
+import { Payment, WebhookEvent } from '../src/modules/payments/payments.model.js';
+import { Refund } from '../src/modules/refunds/refunds.model.js';
 import { SearchOutbox } from '../src/modules/search/search.model.js';
+import { Settlement } from '../src/modules/settlements/settlements.model.js';
 import { Vendor } from '../src/modules/shops/shops.model.js';
 import { User } from '../src/modules/users/users.model.js';
 
@@ -24,6 +28,13 @@ const MODELS = [
   Cart,
   Coupon,
   CouponRedemption,
+  Order,
+  SubOrder,
+  Counter,
+  Payment,
+  WebhookEvent,
+  Settlement,
+  Refund,
 ];
 
 /**

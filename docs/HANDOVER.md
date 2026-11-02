@@ -1,83 +1,86 @@
 # HANDOVER.md
 
-## Current state (after Phase 4: Cart + coupons)
+## Current state (after Phase 5: Checkout, inventory, payments)
 
-Phase 4 is implemented. Branch suggestion: `phase-4-cart-coupons`. No Phase 5+ code exists (no checkout, orders, payments, or coupon reservation). Phases 1-3 behave as before.
+Phase 5 is implemented. Branch suggestion: `phase-5-checkout-payments`. No Phase 6+ code exists (no fulfilment transitions, customer cancel, admin refund, settlement release, invoices). Phases 1-4 behave as before.
 
-- **Cart (customers only):** `GET /cart`, `PUT|DELETE /cart/items/:productId`, `DELETE /cart`, `POST|DELETE /cart/coupon`. The cart stores only `productId` + `quantity` (+ `couponCode`). Every response is the whole priced preview, read from Mongo (never cache or search index). Max 10 per product (422 above), max 30 distinct products (409).
-- **Preview lines:** `status: ok | insufficient_stock | unavailable`. `unavailable` (product not `active` or shop not `approved`) is shown but not priced or counted. `insufficient_stock` is priced, carries `available`, and sets `hasIssues`. Totals: `total = subtotal - discount` (shipping 0). Each line has `discountPaise` and `lineNetPaise` (ready for the Phase 5 sub-order snapshot).
-- **Add rules:** a product that cannot be bought (draft/archived/suspended/unapproved shop/non-existent id) is 409 `CONFLICT`; quantity above current stock is 409 `OUT_OF_STOCK` with `details: [{productId, available}]`.
-- **Coupons:** vendor CRUD (`/vendor/coupons`, approved shop, own coupons only, 404 otherwise) and admin CRUD (`/admin/coupons`, platform coupons only, audited as `coupon.created` / `coupon.updated`). `code`, `type`, `scope`, `vendorId`, `usedCount` are not editable.
-- **Coupon validation:** one pure function, `evaluateCoupon` in `modules/coupons/coupons.rules.js` (no DB, no clock). Returns `{ ok:false, reason }` or `{ ok:true, discountPaise, lineDiscounts }`. Percent uses `roundHalfUp`, optional `maxDiscountPaise` cap (percent only), clamp to covered subtotal; allocation to lines uses largest remainder (`lib/money.js`) so shares sum exactly. A vendor coupon covers only that vendor's lines; `minOrderPaise` is measured on covered lines.
-- **Saved coupon:** `POST /cart/coupon` saves only a coupon valid right now (else 422 `COUPON_INVALID`, `details.reason`; the previous coupon is kept). On later reads the coupon is re-evaluated; if it stopped being valid the cart still answers 200 with `coupon: null`, `couponError: {code, reason}` and no discount.
-- **Client:** `/cart` page (customers; quantity select, remove, empty, coupon apply/remove, totals, warnings), "Add to cart" on the product page (adds to the existing quantity, capped at 10; login hint for anonymous users), header "Cart (n)" link for customers. There is no vendor/admin coupon UI yet (API only) and no checkout button (Phase 5).
+- **Checkout:** `POST /checkout` (customer, `Idempotency-Key` required) re-reads prices, stock and the coupon inside one Mongo transaction, rejects before the first write (empty cart, unavailable, out of stock, coupon, total under 100 paise, vendor without payout account, payout under 100 paise, `exceeds_platform_margin`), then writes the order, one sub-order per vendor, settlements (`not_eligible`), the payment row, the coupon reservation and the stock decrement, and clears the cart. The provider order (with one **on-hold transfer per sub-order**) is created after the commit; on failure the order is expired again and the cart is restored.
+- **Confirmation:** `POST /payments/verify` (browser callback), `POST /webhooks/razorpay` and the reconcile job all end in one conditional `markOrderPaid`, so whichever arrives first wins. The signature is checked against the order id **stored** on the server. Payment state always comes from a provider fetch, never from a request body.
+- **Webhook:** raw body, HMAC verified over the raw bytes, deduplicated by the `x-razorpay-event-id` header with **atomic claiming** (a `failed` row or a `received` row older than 60 s is taken over by exactly one request). Always 200 for a correctly signed request.
+- **Jobs (lease-guarded, every 60 s):** reservation release (expires unpaid orders after 15 min, asking the provider first whether the customer paid) and reconcile (confirms paid orders older than 5 min, checks orders expired in the last hour for late captures, retries refunds the provider refused).
+- **Late capture:** an expired order that gets paid re-reserves its stock, or if the stock is gone is refunded in full (one order-level `Refund`, provider call claimed atomically).
+- **Providers:** `PaymentProvider` contract; `MockLedgerProvider` (in-process, enforces Razorpay's documented limits) and a Razorpay Route adapter (plain `fetch`, no SDK). `PAYMENT_PROVIDER=mock` is refused in production.
+- **Payout accounts:** vendors are paid only with an attached linked account. Create it in the Razorpay Dashboard and attach it with `npm run link-account -- --vendor <id|slug> --account <acc_id> --admin <email> [--replace]` (validated, audited). `POST/GET /vendor/payout-account` are **deferred**. The mock derives `acc_mock<vendorId>` automatically.
+- **Client:** `/checkout` (address choice or a small add-address form, summary, place order), `/orders`, `/orders/:orderId` (status, countdown, live refresh, payment panel: Razorpay Checkout or, with the mock, a "Simulate payment" button), "Proceed to checkout" on the cart, "Orders" in the header.
 
-## Key decisions (proposed additions to DECISIONS.md: D39-D43, already drafted in the updated DECISIONS.md)
+## Key decisions (DECISIONS.md)
 
-- **D39** Cart stores ids + quantities only; reads price from Mongo; unavailable lines excluded from totals, insufficient-stock lines flagged.
-- **D40** Adding is strict (409/422), the preview only warns; cart writes are atomic single updates (no lost or duplicate lines under parallel requests).
-- **D41** Coupon rules are one pure function; check order, min-order-on-covered-lines, percent cap, clamp, largest-remainder allocation.
-- **D42** Coupon CRUD immutability, approved-shop requirement, 404 ownership, admin audit actions.
-- **D43** Saved cart coupon is re-evaluated on every read and reported as `couponError`, not as an error response.
+D44-D51 **Accepted** (V1-V3 research, holds, webhooks, transfer limits, verify rules, payout accounts, 100-paise minimums, `PLATFORM_COMMISSION_BPS`). **D52-D56 are Proposed and need your review:** D52 commission rate for multi-category sub-orders; D53 checkout details (coupon omitted/null, 201 vs 200, cart restore, order-number gaps); D54 late capture and refunds as built; D55 dev-only mock payment endpoint; D56 schema and naming differences. The source register at the end of that section lists every Razorpay page used, and assumptions A1-A10.
 
 ## Relevant files
 
-New (server): `src/lib/money.js` (`mulDivRoundHalfUp`, `allocateProportionally`); `src/modules/cart/` (`cart.model`, `.validator`, `.service`, `.controller`, `.routes`); `src/modules/coupons/` (`coupons.model`, `redemptions.model`, `coupons.rules`, `.validator`, `.service`, `.controller`, `.routes`); `tests/phase4.unit.test.js`, `tests/cart.test.js`, `tests/coupons.test.js`.
-New (client): `src/lib/cart.js` (+ `cart.test.js`), `src/components/AddToCart.jsx`, `src/pages/CartPage.jsx`, `src/pages/cart.css`.
-Changed: `server/src/app.js` (wiring), `server/src/config/constants.js` (`CART`, `COUPON`, `COUPON_REASONS`), `server/tests/db.js` (new models in cleanup), `server/tests/rbac.test.js` (Phase 4 routes in the route-table guard), `client/src/App.jsx`, `client/src/components/Layout.jsx`, `client/src/pages/ProductPage.jsx`.
-Dependencies: dev-only `fast-check` in `server` (the property-test tool named in TESTING.md).
+New (server): `src/lib/commission.js`, `src/lib/modelJson.js`; `src/providers/payment/` (`PaymentProvider.js`, `signatures.js`, `mockLedger.js`, `razorpay.js`, `index.js`); `src/modules/orders/` (`orders.model`, `orders.money`, `orders.lifecycle`, `checkout.service`, `orders.service`, `.validator`, `.controller`, `.routes`); `src/modules/payments/` (`payments.model`, `payments.service`, `webhooks.service`, `.validator`, `.controller`, `.routes`); `src/modules/settlements/settlements.model.js`; `src/modules/refunds/refunds.model.js`; `src/jobs/` (`leasedJob`, `reservationRelease`, `reconcilePending`); `src/scripts/linkAccount.js`; tests `phase5a.unit`, `checkout`, `payments`, `jobs`, `linkAccount`, `razorpay.provider` and `phase5.helpers.js`.
+New (client): `src/lib/checkout.js` (+ test), `src/pages/CheckoutPage.jsx`, `OrdersPage.jsx`, `OrderPage.jsx`, `orders.css`.
+Changed: `server/src/app.js` (provider, services, raw-body webhook router mounted before the JSON parser), `src/server.js` (provider, index creation, jobs), `src/config/constants.js`, `src/config/env.js`, `src/middleware/rateLimit.js` (checkout limiter), `src/modules/audit/audit.service.js` (optional transaction `session`), `server/package.json` and root `package.json` (`link-account`), `.env.example`, `tests/helpers.js`, `tests/db.js`, `tests/rbac.test.js`; client `App.jsx`, `Layout.jsx`, `CartPage.jsx`, `cart.css`. No new dependencies.
 
 ## API changes
 
-| Method    | Path                              | Auth              | Notes                                                                    |
-| --------- | --------------------------------- | ----------------- | ------------------------------------------------------------------------ |
-| GET       | `/cart`                           | Customer          | priced preview                                                           |
-| PUT       | `/cart/items/:productId`          | Customer          | `{ quantity }` 0-10; 0 removes; 422 >10; 409 `CONFLICT`/`OUT_OF_STOCK`   |
-| DELETE    | `/cart/items/:productId`, `/cart` | Customer          | idempotent                                                               |
-| POST      | `/cart/coupon`                    | Customer          | `{ code }`; 422 `COUPON_INVALID` `details.reason`                        |
-| DELETE    | `/cart/coupon`                    | Customer          | idempotent                                                               |
-| GET/POST  | `/vendor/coupons`                 | Vendor (approved) | list own (`status`, `page`, `limit`) / create; 403 `VENDOR_NOT_APPROVED` |
-| GET/PATCH | `/vendor/coupons/:couponId`       | Vendor (approved) | other vendors' ids: 404                                                  |
-| GET/POST  | `/admin/coupons`                  | Admin             | platform coupons only; create audited                                    |
-| GET/PATCH | `/admin/coupons/:couponId`        | Admin             | update audited                                                           |
-
-Response shapes and reasons are documented in the updated API_CONTRACTS.md.
+New: `POST /checkout` (201 first call, 200 replay), `GET /orders`, `GET /orders/:orderId`, `POST /payments/verify`, `POST /webhooks/razorpay` (outside `/api/v1` auth and rate limits; the signature authenticates), `POST /payments/mock/complete` (dev only, 404 otherwise). Shapes, errors and reasons are in API_CONTRACTS.md. `POST/GET /vendor/payout-account` are marked deferred.
 
 ## Schema changes
 
-New collections: `carts` (`customerId` unique, `items[{productId, quantity 1-10, addedAt}]` max 30, `couponCode?`), `coupons` (fields and indexes as in DATABASE_SCHEMA; `usageLimitPerUser` defaults to 1, `minOrderPaise` to 0), `couponRedemptions` (model exists and is READ by the per-user limit check; nothing writes it until Phase 5). New audit actions `coupon.created`, `coupon.updated` (entityType `coupon`).
+New collections `orders`, `subOrders`, `payments`, `settlements`, `refunds`, `counters`, `webhookEvents` (see DATABASE_SCHEMA.md, already updated). Differences from the earlier schema: `payments.provider` allows `mock` and `providerOrderId` is unique-sparse; `webhookEvents.claimedAt`; `refunds.subOrderId`/`requestedBy` optional and `providerCallAt`; audit action `vendor.payout_account_attached`. `couponRedemptions` is now written (reserved, redeemed, released) and `usedCount` is maintained.
 
 ## Environment variables
 
-None new.
+New: `PAYMENT_PROVIDER` (`mock` default / `razorpay`; mock refused when `NODE_ENV=production`), `PLATFORM_COMMISSION_BPS` (integer 0-5000, default 1000, empty means unset), `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` (required only for `razorpay`). `.env.example` is updated.
 
-## Verification
+## Commands
 
-Run in a sandbox with real MongoDB 8.3.7 (single-node replica set via mongodb-memory-server with a system binary). **No real Redis or Elasticsearch was used** (Phase 4 does not touch them; the cart never reads the cache or index).
+```
+npm install
+npm run lint && npx prettier --check .
+npm test -w server          # needs a MongoDB replica-set binary (see Verification)
+npm test -w client && npm run build -w client
+npm run link-account -w server -- --vendor <id|slug> --account <acc_id> --admin <email>
+```
 
-- Server: 409 tests pass (308 existing + 101 new). Client: 55 tests pass (50 existing + 5 new); `vite build` OK. ESLint clean; Prettier clean.
-- Acceptance: quantity >10 is 422, non-purchasable is 409, archived product shows `unavailable` in the preview; coupon validation table covers the 10 plan cases (+ extras) and integration tests cover the API reasons; the 1,000-run property tests verify that coupon line shares sum exactly to the discount (and that allocation is exact and bounded).
-- Parallel cart writes (6 different products into a new cart at once; the same product repeatedly) leave no lost and no duplicate lines.
+## Verification (what was actually run, 2026-11-01)
+
+Environment: Node 22, **real MongoDB 8.3.7** (single-node replica set from a system binary via `MONGOMS_SYSTEM_BINARY`). No Razorpay, Redis or Elasticsearch was used by the tests.
+
+- Server: **563 tests pass** (409 existing + 154 new). Client: **71 tests pass** (55 + 16); `vite build` OK. ESLint clean on the whole repo. Prettier clean on code (see the note on docs below).
+- New acceptance checks all pass as automated tests (the list with test names is in IMPLEMENTATION_PLAN Phase 5): 50 concurrent checkouts on stock 10 give 10 orders and 40 `OUT_OF_STOCK` with stock 0; the same key sent 5 times at once gives 1 order and 1 provider order; 1,000-run property tests for commission and totals; tampered signature/amount give 400 with the order unchanged; one webhook delivered 3 times and concurrently with verify changes the order once; 20 concurrent claims of a `failed` or stale `received` event run the handler once; expiry restores stock and coupon exactly once (also under 5 racing calls); late capture re-reserves or refunds exactly once.
+- **Also run once on a real booted server** (`node src/server.js`, replica set, mock provider, Redis and ES deliberately down): register customer, two vendors and an admin; vendor-funded coupon; 2-vendor checkout (total 280,000 paise); replay; tampered verify (400) then good verify (placed); signed webhook, duplicate and bad-signature webhook through the real raw-body route; the real reservation job expired a backdated unpaid order and restored the stock (1 to 4); the `link-account` CLI attached, no-op'd, and rejected a wrong account and a non-admin; production boot with the mock exited with an error.
 
 **Not verified:**
 
-1. A real browser pass of the cart UI, add-to-cart on the product page, and the header link (components are only compiled by `vite build` and linted; there are no component tests).
-2. The outstanding Phase 3 checks that need your Docker stack (real ES mapping/relevance, 10 s search latency p95, `npm run reindex` on 1,000 products, cached product p95 < 50 ms) remain open as listed in the previous handover.
-3. Behavior against a real Redis for the cart (not used by this phase).
+1. **A payment with real Razorpay (test mode).** Needs your account: Route enabled, a linked account, auto-capture, a webhook URL Razorpay accepts (not localhost or a blocklisted tunnel), then DECISIONS assumptions A4, A8, A9, A10. The Razorpay adapter is tested against a stubbed `fetch` built from the documentation only.
+2. A real-browser pass of the new pages, and Razorpay's widget opening. The components are only compiled and linted; there are no component tests.
+3. Behaviour with a real Redis (cache invalidation after stock changes is exercised with no Redis) or Elasticsearch.
+4. The outstanding Phase 3 checks that need your Docker stack (see the previous handover) remain open.
+5. Prettier on docs: `docs/*.md` were reformatted by Prettier only where Claude edited them; re-run `npx prettier --check .` after pasting.
 
 ## Known issues
 
-- A `fixed` coupon (or a stack of one) can clamp a cart total to **0**. Payment providers will not create a 0-amount order, so Phase 5 must decide: reject a 0 total at checkout, or skip the provider for zero-total orders.
-- Coupon usage limits become effective only when checkout writes `couponRedemptions` and increments `usedCount` (Phase 5). Until then the checks are exercised by tests that insert rows directly.
-- Coupon-code guessing is limited only by the global rate limiter (300 requests / 15 min / IP). No dedicated limiter was added because none is specified in ARCHITECTURE section 8; consider one in Phase 9.
-- No TTL/cleanup for abandoned carts.
-- No vendor or admin coupon UI; manage coupons through the API.
-- Carried over from Phase 3: category rename/re-parent/deactivation is not propagated to the index; reindex runs inside the HTTP request; `inStock` in search can be up to ~60 s stale; Mongo fallback loads all approved shops; API_CONTRACTS says a `rejected` vendor is terminal while code/constants allow `rejected -> approved`; two Phase 2 acceptance boxes (presign constraints; negative stock / non-integer price) are still unticked in IMPLEMENTATION_PLAN and were not touched in this phase.
+- **Operational prerequisite:** with `PAYMENT_PROVIDER=razorpay`, a vendor without an attached, active linked account cannot be bought from (409 `vendor_payout_unavailable`). Attach accounts with `link-account` first.
+- `exceeds_platform_margin` is checked only at checkout, so a platform coupon can look valid in the cart and be refused at checkout (D47b, by design).
+- Whether Route is **activated** for a linked account is not checked (it needs a product id we do not store); a non-activated account appears as a 502 when an order is created (D49).
+- The 100-paise minimum per transfer inside an order is assumed from the transfers-from-payments page (A1); the "no transfer above the order amount" rule is read on a non-India page only (A2).
+- A failed webhook is answered 200 and recorded `failed`; Razorpay will not retry it. It is recovered by a manual replay (same event id, atomic re-claim) or by the reconcile job, which asks the provider directly. Reconcile looks at an expired order for one hour only.
+- If the process dies after the provider accepts a late-capture refund but before the database is updated, the retry asks Razorpay again; Razorpay should refuse a second full refund, but that was not tested (A10).
+- `payment.failed` is stored on the payment but never sets `orders.paymentStatus = failed` (the customer may retry on the same provider order).
+- MockLedger is in memory: a mock-paid order cannot be confirmed after a server restart (development only).
+- Order numbers can have gaps (the counter is taken before the transaction).
+- There are no customer cancel, refund, invoice or fulfilment endpoints yet (Phases 6-7); `docs` list them.
+- No address management UI other than the add-address form at checkout.
+- Carried over: `POST /cart/coupon` has only the global rate limit; no cleanup of abandoned carts; no vendor/admin coupon UI; Phase 3 items (category changes not propagated to the index, reindex runs inside the HTTP request, `inStock` in search up to about 60 s stale, Mongo fallback loads all approved shops); API_CONTRACTS says a `rejected` vendor is terminal while the code allows `rejected -> approved`; two Phase 2 acceptance boxes (presign constraints; negative stock / non-integer price) are still unticked.
 
-## Next-phase prerequisites (Phase 5: Checkout, inventory, payments)
+## Next-phase prerequisites (Phase 6: Fulfilment, refunds, settlements)
 
-- Review and approve Phase 4, then create the branch.
-- **Gate:** V1, V2, V3 (Razorpay Route behavior: holds, webhook payloads, test-mode capabilities) must be resolved before starting Phase 5.
-- Checkout must re-read price, stock and coupon from Mongo and re-run `evaluateCoupon` inside the transaction; reuse `lineDiscounts` for sub-order item snapshots (`discountPaise`, `lineNetPaise`); write `couponRedemptions(reserved)` and increment `usedCount` conditionally in that same transaction (D21); clear the cart on success.
-- Decide the zero-total order behavior (see Known issues).
-- Mount the raw-body webhook route before `express.json` in `app.js` (marked there).
+- Review and approve Phase 5 (including D52-D56), then create the branch.
+- Read before designing refunds: the Razorpay **transfer reversal API** and whether an **on-hold** transfer can be reversed (A6), and the **official refund webhook** names (A7). A partial refund of a multi-vendor payment cannot use `reverse_all` (D45).
+- The settlement release job needs `PATCH /v1/transfers/:id` with `on_hold: false` (D45, S2); `PaymentProvider` has no `releaseTransfer` yet. `settlements.providerTransferId` is already stored at checkout.
+- Sub-orders are `processing` once paid and `cancelled` when their order expires; Phase 6 adds `shipped`, `delivered`, customer cancel (stock restored once via `stockRestored`, reuse `orders.lifecycle.restoreStock`) and the settlement states.
+- Webhook events for transfers, settlements and refunds must be added to the handler (they are stored as `ignored` today).
+- Do the manual test-mode run (TESTING section 4) before relying on any Razorpay behaviour documented here as an assumption.

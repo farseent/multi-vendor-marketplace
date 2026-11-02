@@ -115,12 +115,12 @@ Invariant: `sum(subOrders.customerTotalPaise) == order.totalPaise`.
 
 ## payments
 
-`orderId`, `provider:'razorpay'`, `providerOrderId` (unique), `providerPaymentId` (unique, sparse), `amountPaise`, `currency`, `status: created|authorized|captured|failed`, `method?`, `failureReason?`, `capturedAt?`, `confirmedVia?: client_verify|webhook|reconcile`.
+`orderId`, `provider: razorpay|mock`, `providerOrderId` (unique, sparse: the row is written inside the checkout transaction and the provider order is created after the commit), `providerPaymentId` (unique, sparse), `amountPaise`, `currency`, `status: created|authorized|captured|failed`, `method?`, `failureReason?`, `capturedAt?`, `confirmedVia?: client_verify|webhook|reconcile`.
 Indexes: `{providerOrderId:1}` unique; `{providerPaymentId:1}` unique sparse; `{orderId:1}`.
 
 ## refunds
 
-`paymentId`, `orderId`, `subOrderId`, `amountPaise`, `commissionReversedPaise`, `vendorDebitPaise`, `reason` (enum `customer_cancel|admin|failed_late_capture`), `note?`, `status: initiated|processed|failed`, `providerRefundId` (unique sparse), `requestedBy`, `idempotencyKey` (unique).
+`paymentId`, `orderId`, `subOrderId?` (absent for an order-level `failed_late_capture` refund), `amountPaise`, `commissionReversedPaise`, `vendorDebitPaise`, `reason` (enum `customer_cancel|admin|failed_late_capture`), `note?`, `status: initiated|processed|failed`, `providerRefundId` (unique sparse), `providerCallAt?` (atomic claim of the provider call, 60 s), `requestedBy?` (absent when the system refunds), `idempotencyKey` (unique).
 Indexes: `{subOrderId:1}`; `{providerRefundId:1}` unique sparse; `{idempotencyKey:1}` unique.
 Rule: `sum(refunds.amountPaise where status in initiated|processed) <= subOrder.customerTotalPaise`.
 
@@ -161,10 +161,10 @@ Indexes: `{code:1}` unique; `{vendorId:1}`.
 ## Supporting collections
 
 - `counters`: `{ _id:'orderNumber:YYYYMMDD' | 'invoice:YYYY', seq }` via `$inc` upsert.
-- `webhookEvents`: `provider, eventId (unique with provider), eventType, status: received|processed|failed|ignored, attempts, receivedAt, processedAt?, error?`; TTL 90 days on `receivedAt`.
+- `webhookEvents`: `provider, eventId (the x-razorpay-event-id header; unique with provider), eventType, status: received|processed|failed|ignored, attempts, receivedAt, claimedAt, processedAt?, error?`; TTL 90 days on `receivedAt`. `claimedAt` is when a handler last took ownership of the event (atomic claim, DECISIONS D46).
 - `searchOutbox`: `productId, op:'upsert|delete', attempts, nextAttemptAt, lastError?, createdAt`; indexes `{nextAttemptAt:1}` and `{productId:1}`.
   `op` is advisory; the sync job determines whether to index or delete using the current product and vendor state.
-- `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; written by admin mutations for `vendor.status_changed`, `vendor.commission_changed`, `category.created`, `category.updated`, and `search.reindexed`, `coupon.created`, and `coupon.updated`; index `{entityType:1,entityId:1,createdAt:-1}`.
+- `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; written by admin mutations for `vendor.status_changed`, `vendor.commission_changed`, `category.created`, `category.updated`, and `search.reindexed`, `coupon.created`, `coupon.updated`, and `vendor.payout_account_attached` (written by the `link-account` admin script, `meta { previousLinkedAccountId, linkedAccountId }`); index `{entityType:1,entityId:1,createdAt:-1}`.
 - `reconciliationReports`: `runAt, totals{...}, mismatches[], status`.
 - `jobLocks`: `{ _id: jobName, lockedUntil, owner }`.
 

@@ -4,6 +4,8 @@ import { parseEnv } from './config/env.js';
 import { connectMongo, disconnectMongo, pingMongo } from './lib/db.js';
 import { createEsClient, pingEs } from './lib/es.js';
 import { createJobLocks, JobLock } from './jobs/jobLock.js';
+import { createReconcilePendingJob } from './jobs/reconcilePending.js';
+import { createReservationReleaseJob } from './jobs/reservationRelease.js';
 import { createSearchSyncJob } from './jobs/searchSync.js';
 import { createLogger } from './lib/logger.js';
 import { createRedis, pingRedis } from './lib/redis.js';
@@ -11,7 +13,15 @@ import { createStorage } from './lib/s3.js';
 import { RefreshToken } from './modules/auth/auth.model.js';
 import { AuditLog } from './modules/audit/audit.model.js';
 import { Category } from './modules/catalog/categories.model.js';
+import { Cart } from './modules/cart/cart.model.js';
 import { Product } from './modules/catalog/products.model.js';
+import { Coupon } from './modules/coupons/coupons.model.js';
+import { CouponRedemption } from './modules/coupons/redemptions.model.js';
+import { Counter, Order, SubOrder } from './modules/orders/orders.model.js';
+import { Payment, WebhookEvent } from './modules/payments/payments.model.js';
+import { Refund } from './modules/refunds/refunds.model.js';
+import { Settlement } from './modules/settlements/settlements.model.js';
+import { createPaymentProvider } from './providers/payment/index.js';
 import { createHealthService } from './modules/health/health.service.js';
 import { createSearchIndex } from './modules/search/search.index.js';
 import { SearchOutbox } from './modules/search/search.model.js';
@@ -53,6 +63,18 @@ async function main() {
     AuditLog.init(),
     SearchOutbox.init(),
     JobLock.init(),
+    // Phase 5: the unique indexes carry the idempotency guarantees (order key, webhook event id,
+    // provider ids), so they must exist before the first checkout or webhook arrives.
+    Cart.init(),
+    Coupon.init(),
+    CouponRedemption.init(),
+    Order.init(),
+    SubOrder.init(),
+    Counter.init(),
+    Payment.init(),
+    WebhookEvent.init(),
+    Settlement.init(),
+    Refund.init(),
   ]);
 
   // Elasticsearch is optional at boot (D12): if it is down, search uses the Mongo fallback and
@@ -61,6 +83,9 @@ async function main() {
   await searchIndex
     .ensureIndex()
     .catch((err) => logger.warn({ err: err.message }, 'Elasticsearch not ready at boot'));
+
+  const paymentProvider = createPaymentProvider(env);
+  logger.info({ provider: paymentProvider.name }, 'Payment provider ready');
 
   const healthService = createHealthService({
     logger,
@@ -80,6 +105,8 @@ async function main() {
     redis,
     storage,
     searchIndex,
+    paymentProvider,
+    platformCommissionBps: env.PLATFORM_COMMISSION_BPS,
     trustProxy: env.TRUST_PROXY,
   });
   const server = app.listen(env.PORT, () => logger.info({ port: env.PORT }, 'API listening'));
@@ -87,11 +114,20 @@ async function main() {
   const searchSync = createSearchSyncJob({ searchIndex, jobLocks: createJobLocks(), logger });
   searchSync.start();
 
+  // Phase 5 jobs share the HTTP handlers' service instances and are lease-guarded (D17).
+  const paymentServices = app.get('paymentServices');
+  const jobs = [
+    searchSync,
+    createReservationReleaseJob({ ...paymentServices, jobLocks: createJobLocks(), logger }),
+    createReconcilePendingJob({ ...paymentServices, jobLocks: createJobLocks(), logger }),
+  ];
+  jobs.slice(1).forEach((job) => job.start());
+
   let closing = false;
   const shutdown = (signal) => {
     if (closing) return;
     closing = true;
-    searchSync.stop();
+    jobs.forEach((job) => job.stop());
     logger.info({ signal }, 'Shutting down');
     setTimeout(() => process.exit(1), 10_000).unref();
     server.close(async () => {

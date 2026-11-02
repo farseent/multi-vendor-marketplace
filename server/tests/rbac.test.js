@@ -44,6 +44,12 @@ describe('route table', () => {
         'PATCH /api/v1/vendor/coupons/:couponId',
         'POST /api/v1/admin/coupons',
         'PATCH /api/v1/admin/coupons/:couponId',
+        // Phase 5
+        'POST /api/v1/checkout',
+        'GET /api/v1/orders',
+        'GET /api/v1/orders/:orderId',
+        'POST /api/v1/payments/verify',
+        'POST /api/v1/payments/mock/complete',
       ]),
     );
   });
@@ -88,6 +94,22 @@ describe('authorization matrix (every registered route)', () => {
     for (const route of gated) {
       const res = await call(route, bearer('customer'));
       expect(res.status, `${route.method} ${route.path}`).toBe(403);
+    }
+  });
+
+  // Phase 5: checkout, orders and payment confirmation belong to customers only.
+  it('vendor and admin tokens on every customer-only Phase 5 route -> 403', async () => {
+    const customerOnly = routes.filter((r) =>
+      /^\/api\/v1\/(checkout|orders|payments)(\/|$)/.test(r.path),
+    );
+    expect(customerOnly.length).toBeGreaterThanOrEqual(5);
+    for (const route of customerOnly) {
+      for (const role of ['vendor', 'admin']) {
+        expect(
+          (await call(route, bearer(role))).status,
+          `${role} ${route.method} ${route.path}`,
+        ).toBe(403);
+      }
     }
   });
 

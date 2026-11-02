@@ -1,7 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
-import { API_PREFIX, JSON_BODY_LIMIT } from './config/constants.js';
+import { API_PREFIX, JSON_BODY_LIMIT, WEBHOOK_BODY_LIMIT } from './config/constants.js';
 import { createAuthenticate } from './middleware/auth.js';
 import { createErrorHandler, notFound } from './middleware/error.js';
 import { httpLogger } from './middleware/httpLogger.js';
@@ -30,6 +30,16 @@ import { createCouponsController } from './modules/coupons/coupons.controller.js
 import { createCouponsRouter } from './modules/coupons/coupons.routes.js';
 import { createCouponsService } from './modules/coupons/coupons.service.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
+import { createCheckoutService } from './modules/orders/checkout.service.js';
+import { createOrdersController } from './modules/orders/orders.controller.js';
+import { createOrderLifecycle } from './modules/orders/orders.lifecycle.js';
+import { createPaymentsController } from './modules/payments/payments.controller.js';
+import { createPaymentsRouter } from './modules/payments/payments.routes.js';
+import { createPaymentsService } from './modules/payments/payments.service.js';
+import { createWebhooksService } from './modules/payments/webhooks.service.js';
+import { createOrdersRouter } from './modules/orders/orders.routes.js';
+import { createOrdersService } from './modules/orders/orders.service.js';
+import { assertPaymentProvider } from './providers/payment/PaymentProvider.js';
 import {
   createSearchAdminController,
   createSearchController,
@@ -55,6 +65,8 @@ import { createUsersService } from './modules/users/users.service.js';
  * uploads answer 503 and image URLs are null.
  * `searchIndex` is optional too (see modules/search/search.index.js): without it search answers
  * from the Mongo fallback and the reindex endpoint answers 503.
+ * `paymentProvider` is required (see providers/payment/PaymentProvider.js): the Razorpay adapter or
+ * the MockLedger. `platformCommissionBps` is the D6/D51 default rate.
  */
 export function createApp({
   nodeEnv,
@@ -65,8 +77,11 @@ export function createApp({
   redis = null,
   storage = null,
   searchIndex = null,
+  paymentProvider,
+  platformCommissionBps = 1000,
   trustProxy = 0,
 }) {
+  assertPaymentProvider(paymentProvider);
   const app = express();
   app.set('trust proxy', trustProxy); // makes req.ip the real client IP behind a proxy
 
@@ -80,7 +95,12 @@ export function createApp({
       exposedHeaders: ['X-Request-Id', 'X-Search-Fallback'],
     }),
   );
-  // Phase 5: mount the raw-body webhook route BEFORE this line (signature needs the raw bytes).
+  // Webhooks need the RAW bytes for the signature, so their router (with its own raw-body parser)
+  // is mounted before the JSON parser. Routes are added to it below, once the services exist.
+  // Not rate limited and not behind auth: the signature is the authentication (D46).
+  const webhookRouter = express.Router();
+  webhookRouter.use(express.raw({ type: () => true, limit: WEBHOOK_BODY_LIMIT }));
+  app.use(`${API_PREFIX}/webhooks`, webhookRouter);
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
   // Probes use /health; the same router is also under /api/v1 so the SPA client can reach it.
@@ -118,6 +138,38 @@ export function createApp({
   const couponsService = createCouponsService({ audit });
   const cartService = createCartService({ couponsService, storage });
 
+  // --- Phase 5: checkout, orders, payments ---
+  const lifecycle = createOrderLifecycle({ searchOutbox, cache, logger });
+  const checkoutService = createCheckoutService({
+    paymentProvider,
+    platformCommissionBps,
+    lifecycle,
+    searchOutbox,
+    logger,
+  });
+  const ordersService = createOrdersService({ paymentProvider, storage });
+  const paymentsService = createPaymentsService({
+    paymentProvider,
+    lifecycle,
+    searchOutbox,
+    logger,
+    nodeEnv,
+  });
+  const webhooksService = createWebhooksService({
+    provider: paymentProvider.name === 'mock' ? 'razorpay' : paymentProvider.name,
+    paymentProvider,
+    paymentsService,
+    logger,
+  });
+  const paymentsController = createPaymentsController({
+    paymentsService,
+    webhooksService,
+    paymentProvider,
+  });
+  webhookRouter.post('/razorpay', paymentsController.razorpayWebhook);
+  // The background jobs (server.js) use the same service instances as the HTTP handlers.
+  app.set('paymentServices', { lifecycle, paymentsService });
+
   // Module routers declare full paths relative to /api/v1 (no nesting). Keeping the list on the
   // app lets tests enumerate every registered route (see tests/helpers.js listApiRoutes).
   const routers = [
@@ -147,6 +199,12 @@ export function createApp({
       controller: createCouponsController({ couponsService }),
       loadShop,
     }),
+    createOrdersRouter({
+      controller: createOrdersController({ checkoutService, ordersService }),
+      authenticate,
+      limiters,
+    }),
+    createPaymentsRouter({ controller: paymentsController, authenticate }),
   ];
   app.set('apiRouters', routers);
 

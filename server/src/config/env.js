@@ -29,6 +29,9 @@ const optionalText = z.preprocess(
 // Every variable the backend needs. Later phases add their own (S3, Razorpay...).
 // NODE_ENV has no default on purpose: a production host that forgets it must fail, not
 // silently run in development mode.
+// An empty value ("PLATFORM_COMMISSION_BPS=") must mean "not set", never 0.
+const emptyIsUnset = (value) => (value === '' ? undefined : value);
+
 const fields = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
@@ -63,13 +66,50 @@ const fields = z.object({
       .regex(/^https?:\/\/\S+$/, 'must be an http(s):// URL')
       .optional(),
   ),
+
+  // --- Phase 5: payments (D44-D51) ---
+  // `mock` = MockLedgerProvider (no network, for development and tests); `razorpay` = Razorpay
+  // Route. The mock is refused in production so real traffic can never hit a fake ledger.
+  PAYMENT_PROVIDER: z.enum(['mock', 'razorpay']).default('mock'),
+  // Platform default commission in basis points (D6/D51): integer 0-5000, default 1000 (10%).
+  PLATFORM_COMMISSION_BPS: z.preprocess(
+    emptyIsUnset,
+    z.coerce
+      .number()
+      .int('must be an integer')
+      .min(0, 'must be between 0 and 5000')
+      .max(5000, 'must be between 0 and 5000')
+      .default(1000),
+  ),
+  // Required only when PAYMENT_PROVIDER=razorpay (checked below). Never sent to the frontend,
+  // except the key id, which Checkout needs.
+  RAZORPAY_KEY_ID: optionalText,
+  RAZORPAY_KEY_SECRET: optionalText,
+  RAZORPAY_WEBHOOK_SECRET: optionalText,
 });
 
-// Cross-field rule: a bucket without a region cannot sign anything.
-const schema = fields.refine((env) => !env.S3_BUCKET || env.S3_REGION, {
-  path: ['S3_REGION'],
-  message: 'is required when S3_BUCKET is set',
-});
+// Cross-field rules.
+const schema = fields
+  .refine((env) => !env.S3_BUCKET || env.S3_REGION, {
+    path: ['S3_REGION'],
+    message: 'is required when S3_BUCKET is set',
+  })
+  .refine((env) => !(env.PAYMENT_PROVIDER === 'mock' && env.NODE_ENV === 'production'), {
+    path: ['PAYMENT_PROVIDER'],
+    message: 'must be razorpay in production (the mock ledger is for development and tests)',
+  })
+  .superRefine((env, ctx) => {
+    if (env.PAYMENT_PROVIDER !== 'razorpay') return;
+    for (const key of ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET']) {
+      if (!env[key]) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: 'is required when PAYMENT_PROVIDER=razorpay',
+        });
+      }
+    }
+  });
 
 /**
  * Validate an env-like object and return typed, frozen config.

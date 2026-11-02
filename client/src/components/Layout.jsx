@@ -40,6 +40,7 @@ export default function Layout() {
         <nav aria-label="Main">
           <NavLink to="/status">System status</NavLink>
           {user?.role === 'customer' && <CartLink />}
+          {user?.role === 'customer' && <NavLink to="/orders">Orders</NavLink>}
           {user?.role === 'vendor' && (
             <>
               <NavLink to="/vendor/shop">My shop</NavLink>

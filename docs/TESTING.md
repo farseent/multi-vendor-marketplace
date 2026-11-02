@@ -47,13 +47,13 @@ Generated from the registered route table: for each route × role (anonymous, cu
 
 ### Checkout & payments
 
-- [ ] 50 concurrent buyers, stock 10 → 10 orders, stock 0
-- [ ] Idempotency-Key replay returns same order
-- [ ] Multi-vendor order produces correct sub-orders, totals, commission (property tests pass)
-- [ ] Bad signature / amount mismatch rejected; order unchanged
-- [ ] Webhook duplicate/concurrent/out-of-order (refund before captured) safe
-- [ ] Reservation expiry restores stock and coupon once
-- [ ] Late capture after expiry handled (re-reserve or auto-refund)
+- [x] 50 concurrent buyers, stock 10 → 10 orders, stock 0
+- [x] Idempotency-Key replay returns same order
+- [x] Multi-vendor order produces correct sub-orders, totals, commission (property tests pass)
+- [x] Bad signature / amount mismatch rejected; order unchanged
+- [ ] Webhook duplicate/concurrent/out-of-order (refund before captured) safe _(payment events verified in Phase 5, including 20-way concurrent claims; refund events and "refund before captured" wait for Phase 6)_
+- [x] Reservation expiry restores stock and coupon once
+- [x] Late capture after expiry handled (re-reserve or auto-refund)
 
 ### Fulfillment, refunds, settlement
 
@@ -77,6 +77,8 @@ Generated from the registered route table: for each route × role (anonymous, cu
 - [ ] Fresh-clone setup ≤ 15 min
 
 ## 4. Manual test-mode payment script (run after V1-V3 are resolved)
+
+Prerequisites (DECISIONS D44, D46, D48, D49): Route usable in the test-mode Dashboard with a linked account attached by `npm run link-account`; auto-capture enabled; a webhook with its own secret pointing at a URL Razorpay accepts (not localhost, and not a blocklisted tunnel such as ngrok: use a staging deployment or `zrok`); `PAYMENT_PROVIDER=razorpay` with the test keys. Also confirm DECISIONS assumptions A8-A10 while running it.
 
 1. Create approved vendor + linked account in provider test mode. 2. Add products from 2 vendors, checkout with the provider's published test payment method. 3. Confirm order `placed`, transfers created on hold. 4. Mark delivered, advance time (or use admin release), confirm settlement transitions. 5. Issue partial refund, confirm commission reversal and transfer reversal. Record results in `docs/PAYMENT_TEST_LOG.md`; do not claim results before running.
 

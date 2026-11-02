@@ -46,15 +46,21 @@ flowchart LR
 
 1. `POST /checkout` (header `Idempotency-Key`). Server loads cart, re-reads current prices/stock, validates coupon, computes totals and per-vendor commission.
 2. **Mongo transaction:** conditional stock decrement per item (`stockQty >= qty`), coupon reservation (conditional `usedCount` increment), create `Order(pending_payment, reservationExpiresAt = now+15m)`, `SubOrder`s (one per vendor), `Settlement`s (`not_eligible`), `Payment(created)`, clear cart.
-3. After commit: `PaymentProvider.createOrder(totalPaise, transfers[])` where each transfer = vendor payout for one sub-order, **on hold** (verify V2). Save `providerOrderId`. If the provider call fails: run the compensation (expire order, release stock/coupon) and return 502.
+3. After commit: `PaymentProvider.createOrder(totalPaise, transfers[])` where each transfer = vendor payout for one sub-order, **on hold** (`on_hold: true`, no `on_hold_until`: verified, D45). Save `providerOrderId` and each returned transfer id (`providerTransferId`). If the provider call fails: run the compensation (expire order, release stock/coupon) and return 502.
 4. Client opens the provider widget with `providerOrderId` and the public key id.
-5. **Confirmation paths (all call `markOrderPaid`):** (a) `POST /payments/verify`: verify HMAC signature, then fetch the payment from the provider and confirm `captured`, amount, currency; (b) webhook; (c) reconciliation job for `pending_payment` orders older than 5 min.
+5. **Confirmation paths (all call `markOrderPaid`):** (a) `POST /payments/verify`: verify the HMAC signature (computed over the **stored** provider order id, never the one sent by the client: D48), then fetch the payment from the provider and confirm `captured`, amount, currency; (b) webhook; (c) reconciliation job for `pending_payment` orders older than 5 min.
 6. `markOrderPaid` = conditional update `status: pending_payment → placed, paymentStatus: unpaid → paid` (idempotent: second caller matches 0 docs and returns the current state). Sets sub-orders `pending_payment → processing`, redeems coupon reservation, invalidates caches.
 7. **Late capture on expired order:** if the order is already `expired`, attempt to re-reserve stock in a transaction. On success, proceed. On failure, auto-refund in full and log an audit event.
 
+**Provider constraints (proposed, D47/D49/D50)** are checked at the start of step 1, before any write, in this order: total of at least 100 paise (else 422 `VALIDATION_ERROR`, reason `zero_total` or `below_minimum_total`); every vendor in the cart has an active payout account (else 409 `CONFLICT`, reason `vendor_payout_unavailable`); every sub-order payout at least 100 paise (else 422 `VALIDATION_ERROR`, reason `payout_below_minimum`); the sum of vendor payouts does not exceed the total (else 422 `COUPON_INVALID`, reason `exceeds_platform_margin`; the D6 commission model is unchanged).
+
 ### 3.2 Webhooks
 
-`POST /webhooks/razorpay` uses a raw-body parser, verifies the signature before parsing, inserts `webhookEvents{provider,eventId}` (unique index; duplicate key → return 200 and stop), processes, marks processed, and responds 200 fast. Failures leave `status=failed` for retry by reconcile. Amount and currency are always checked against the DB. Event content is never trusted for privileged decisions without a provider API fetch for payment state.
+`POST /webhooks/razorpay` uses a raw-body parser, verifies the signature before parsing, inserts `webhookEvents{provider,eventId}` where `eventId` is the `x-razorpay-event-id` header (unique index; on a duplicate key, return 200 and stop unless the row is `failed` or a `received` row whose `claimedAt` is older than 60 s: then one atomic conditional update claims it and only the request whose update matched processes the event; proposed, D46), processes, marks processed, and responds 200 fast. Failures leave `status=failed` for retry by reconcile. Amount and currency are always checked against the DB. Event content is never trusted for privileged decisions without a provider API fetch for payment state.
+
+Implementation notes (Phase 5, DECISIONS D53/D54): the order number counter is taken before the transaction (gaps are possible); clearing the cart inside the transaction serialises two checkouts of one customer; if the provider order cannot be created the order is expired AND the cart is restored; a failed webhook is answered 200, recorded as `failed`, and recovered by a redelivery (atomic re-claim) or by the reconcile job; the provider refund call of a late capture is claimed atomically because Razorpay's `receipt` is not an idempotency key; the reconcile job also asks about orders that expired in the last hour.
+
+Razorpay delivery facts (verified, D46): at-least-once delivery; a response slower than 5 s or any non-2xx is retried with backoff for 24 h and then the webhook is disabled; ordering is not guaranteed; `payment.failed` is not sent for a failure during first authorisation, so the reconcile job, not the webhook, is the safety net for payments that never complete. Handlers only move status forward.
 
 ### 3.3 Fulfillment
 
@@ -62,11 +68,11 @@ Vendor `PATCH /vendor/sub-orders/:id/status` along an allowed transition table (
 
 ### 3.4 Refunds
 
-Customer may cancel a sub-order before `shipped`; admin may refund any sub-order (full/partial) within the window. Flow: create `Refund(initiated)` (idempotent by key) → provider refund (reverse the vendor transfer, V2) → webhook/fetch marks `processed` → restore stock if cancelled-before-ship → recompute settlement. Commission is reversed proportionally (see DECISIONS D9).
+Customer may cancel a sub-order before `shipped`; admin may refund any sub-order (full/partial) within the window. Flow: create `Refund(initiated)` (idempotent by key) → provider refund (reverse the vendor transfer: `reverse_all` works only for a full refund or a single-transfer payment, so a partial refund of a multi-vendor payment must use the transfer reversal API; details still to be read at the start of Phase 6, D45) → webhook/fetch marks `processed` → restore stock if cancelled-before-ship → recompute settlement. Commission is reversed proportionally (see DECISIONS D9).
 
 ### 3.5 Settlement
 
-States: `not_eligible → pending_release → released → settled` (+ `reversed`, `failed`). Hourly job releases the provider hold for settlements with `returnWindowEndsAt <= now`, no open refund, and vendor payout account `active`. Provider settlement webhook/fetch moves to `settled`. A daily reconciliation job compares local settlement totals against provider transfers and writes a `reconciliationReports` document.
+States: `not_eligible → pending_release → released → settled` (+ `reversed`, `failed`). Hourly job releases the provider hold (`PATCH` the transfer with `on_hold: false`; the funds reach the linked account by the next working day, so a lag between `released` and `settled` is normal) for settlements with `returnWindowEndsAt <= now`, no open refund, and vendor payout account `active`. Provider settlement webhook/fetch moves to `settled`. A daily reconciliation job compares local settlement totals against provider transfers and writes a `reconciliationReports` document.
 
 ### 3.6 Search synchronization (Mongo → Elasticsearch)
 

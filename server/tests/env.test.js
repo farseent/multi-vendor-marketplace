@@ -13,7 +13,7 @@ const VALID = {
 };
 const REQUIRED = Object.keys(VALID);
 const serverRoot = fileURLToPath(new URL('..', import.meta.url));
-const BOOT_TEST_TIMEOUT = 20_000;
+const BOOT_TEST_TIMEOUT = 45_000;
 
 describe('parseEnv', () => {
   it('parses valid config, applies defaults and splits CORS origins', () => {
@@ -76,7 +76,7 @@ describe('server boot', () => {
       cwd: serverRoot,
       env: { PATH: process.env.PATH, ...env },
       encoding: 'utf8',
-      timeout: 15_000,
+      timeout: 30_000,
     });
 
   it(

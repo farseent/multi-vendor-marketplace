@@ -17,6 +17,7 @@ export const RATE_LIMITS = {
   changePassword: { windowMs: 15 * 60_000, max: 10 }, // per user
   presign: { windowMs: 60 * 60_000, max: 30 }, // per vendor user (Phase 2)
   search: { windowMs: 60_000, max: 60 }, // per IP (Phase 3)
+  checkout: { windowMs: 60_000, max: 10 }, // per customer (Phase 5, ARCHITECTURE 8)
 };
 
 // Vendors, catalog, uploads (Phase 2)
@@ -103,3 +104,38 @@ export const COUPON_REASONS = [
   'total_limit_reached',
   'user_limit_reached',
 ];
+
+// Checkout, orders, payments (Phase 5)
+export const DEFAULT_PLATFORM_COMMISSION_BPS = 1000; // D6 / D51: 10%
+export const RESERVATION_MINUTES = 15; // D7: stock and coupon are held this long
+export const MIN_TOTAL_PAISE = 100; // D50: the provider's INR 1.00 minimum order amount
+export const MIN_TRANSFER_PAISE = 100; // D47a: smallest vendor payout we will send
+export const ORDER_STATUSES = ['pending_payment', 'placed', 'completed', 'cancelled', 'expired'];
+export const PAYMENT_STATUSES = ['unpaid', 'paid', 'failed'];
+export const REFUND_STATUSES = ['none', 'partial', 'full'];
+export const FULFILLMENT_STATUSES = [
+  'pending_payment',
+  'processing',
+  'shipped',
+  'delivered',
+  'cancelled',
+];
+export const IDEMPOTENCY_KEY = { min: 8, max: 100, pattern: /^[A-Za-z0-9_.:-]+$/ };
+// A webhook event row in status `received` older than this is considered abandoned (D46).
+export const WEBHOOK_STALE_CLAIM_MS = 60_000;
+export const WEBHOOK_BODY_LIMIT = '256kb';
+
+// Background jobs (D17: in-process, Mongo lease). ARCHITECTURE 5.
+export const RESERVATION_JOB = {
+  jobName: 'reservationRelease',
+  intervalMs: 60_000,
+  leaseMs: 55_000,
+  batchSize: 100,
+};
+export const RECONCILE_JOB = {
+  jobName: 'reconcilePending',
+  intervalMs: 60_000,
+  leaseMs: 55_000,
+  batchSize: 50,
+  minAgeMs: 5 * 60_000, // ARCHITECTURE 3.1: pending_payment orders older than 5 min
+};

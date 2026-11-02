@@ -179,6 +179,20 @@ export default function CartPage() {
         <p>
           <small>Prices and stock are confirmed again when you check out.</small>
         </p>
+        {cart.hasIssues ? (
+          <p>
+            <button type="button" disabled>
+              Proceed to checkout
+            </button>{' '}
+            <small>Fix the items above first.</small>
+          </p>
+        ) : (
+          <p>
+            <Link to="/checkout" className="button-link">
+              Proceed to checkout
+            </Link>
+          </p>
+        )}
       </div>
     </section>
   );

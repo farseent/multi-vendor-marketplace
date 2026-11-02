@@ -73,17 +73,28 @@ Acceptance:
 
 ## Phase 5: Checkout, inventory, payments
 
-Scope: `PaymentProvider` interface + Razorpay and MockLedger implementations, checkout transaction, commission calculation, provider order with transfers, verify endpoint, webhook handler with idempotency, reservation-release job, reconcile-pending job, order UI + provider widget. **Gate:** V1, V2, V3 resolved before starting.
-Acceptance:
+Scope: `PaymentProvider` interface + Razorpay and MockLedger implementations, checkout transaction, commission calculation, provider order with transfers, verify endpoint, webhook handler with idempotency, reservation-release job, reconcile-pending job, order UI + provider widget.
 
-- 50 concurrent checkouts for a product with stock 10 yield exactly 10 successes and 40 `OUT_OF_STOCK`; final `stockQty = 0` (never negative).
-- Same `Idempotency-Key` sent 5 times concurrently creates exactly 1 order.
-- A multi-vendor cart (3 vendors) creates 1 order + 3 sub-orders; `sum(subOrders.customerTotalPaise) == order.totalPaise` and `commission + vendorPayout == base` hold for each (property test, 1,000 random carts, incl. odd-paise rounding).
-- Tampered client amount/signature in `/payments/verify` returns 400 and the order stays `pending_payment`.
-- Same webhook delivered 3× (and concurrently with `/payments/verify`) transitions the order once; `webhookEvents` has 1 row; stock/coupon counters unchanged afterwards.
-- Unpaid order is expired within 16 min; stock and coupon restored exactly once.
-- Late-capture on expired order with no stock results in an automatic full refund record.
-- Manual test-mode payment completes end to end with provider test credentials (recorded in a short demo video/log; not claimed until actually run).
+**Gate (resolved 2026-11-01):** V1-V3 were researched (DECISIONS D44-D48 and its source register) and the owner's choices are Accepted as D47-D51. V1's original definition is unknown; D44 gives it a new, inferred one. D52-D56 record decisions made during implementation and await the owner's review.
+
+**Delivered in five slices:** 5a `PaymentProvider` contract, MockLedger, commission maths with property tests, the new models; 5b `link-account` admin script and the checkout transaction; 5c `markOrderPaid`, `/payments/verify`, the webhook with atomic claiming; 5d reservation-release and reconcile jobs, late capture; 5e Razorpay adapter, order endpoints, checkout/orders UI. Slices 5a-5d run on MockLedger and HTTP stubs and never need Razorpay access; only the manual run below does.
+
+Environment variables: `PAYMENT_PROVIDER` (`mock` default, refused in production, or `razorpay`), `PLATFORM_COMMISSION_BPS` (0-5000, default 1000), and `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` (required only for `razorpay`).
+
+Acceptance (automated checks are named; "not run" means it needs the owner's Razorpay test account):
+
+- [x] 50 concurrent checkouts for a product with stock 10 yield exactly 10 successes and 40 `OUT_OF_STOCK`; final `stockQty = 0` (never negative). (`checkout.test.js`)
+- [x] Same `Idempotency-Key` sent 5 times concurrently creates exactly 1 order (and one provider order). (`checkout.test.js`)
+- [x] A multi-vendor cart (3 vendors) creates 1 order + 3 sub-orders; `sum(subOrders.customerTotalPaise) == order.totalPaise` and `commission + vendorPayout == base` hold for each (property test, 1,000 random carts, incl. odd-paise rounding). (`phase5a.unit.test.js`, `checkout.test.js`)
+- [x] Tampered client amount/signature in `/payments/verify` returns 400 and the order stays `pending_payment`. (`payments.test.js`)
+- [x] Same webhook delivered 3× (and concurrently with `/payments/verify`) transitions the order once; `webhookEvents` has 1 row; stock/coupon counters unchanged afterwards. (`payments.test.js`)
+- [x] Unpaid order is expired within 16 min; stock and coupon restored exactly once. (`jobs.test.js` with an injected clock; also observed once with the real job on a running server)
+- [x] Late-capture on expired order with no stock results in an automatic full refund record. (`payments.test.js`, `jobs.test.js`)
+- [x] (D47/D49/D50) Checkout writes nothing and answers 422 `zero_total` / `below_minimum_total`, 409 `vendor_payout_unavailable`, 422 `payout_below_minimum`, 422 `COUPON_INVALID` `exceeds_platform_margin`. (`checkout.test.js`)
+- [x] (D49) The `link-account` script changes nothing and exits non-zero for a non-admin actor, an unknown or unapproved vendor, a malformed or provider-unknown account id, an account already attached to another vendor, or a replacement without `--replace`; on success it writes exactly one `vendor.payout_account_attached` audit entry. (`linkAccount.test.js`; CLI also run once)
+- [x] (D46) 20 concurrent deliveries of one event id whose row is `failed` (and, separately, `received` and older than 60 s) run the handler exactly once. (`payments.test.js`)
+- [x] (D51) The app refuses to boot when `PLATFORM_COMMISSION_BPS` is not an integer from 0 to 5000, and uses 1000 when it is unset. (`phase5a.unit.test.js`; production refusal of the mock also run once)
+- [ ] Manual test-mode payment completes end to end with provider test credentials (recorded in a short demo video/log; **not run**: it needs Route enabled on your test account, a linked account, auto-capture, a webhook URL Razorpay accepts, and the checks in DECISIONS A4, A8, A9, A10).
 
 ## Phase 6: Fulfillment, refunds, settlements
 

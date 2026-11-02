@@ -93,5 +93,7 @@ export function createLimiters({ redis, logger }) {
     presign: make('presign', (req) => req.user.id),
     // 60/min per IP on the public search endpoint (Phase 3)
     search: make('search', (req) => req.ip),
+    // 10/min per customer on POST /checkout (Phase 5)
+    checkout: make('checkout', (req) => req.user.id),
   };
 }

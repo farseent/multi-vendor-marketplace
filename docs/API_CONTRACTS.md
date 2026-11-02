@@ -113,6 +113,7 @@ Update body (at least one of): `value, minOrderPaise, maxDiscountPaise (null cle
 | POST | /checkout                                      | C                  | `Idempotency-Key`; returns provider order details        |
 | ---- | ---------------------------------------------- | ------------------ | -------------------------------------------------------- |
 | POST | /payments/verify                               | C                  | client-callback verification (server re-fetches payment) |
+| POST | /payments/mock/complete                        | C                  | development only (MockLedger, not production), see below |
 | POST | /webhooks/razorpay                             | Public (signature) | raw body                                                 |
 | GET  | /orders                                        | C                  | paginated                                                |
 | GET  | /orders/:orderId                               | C                  | includes subOrders                                       |
@@ -130,8 +131,8 @@ Update body (at least one of): `value, minOrderPaise, maxDiscountPaise (null cle
 | GET | /vendor/profile | V (pending allowed) | 404 `NOT_FOUND` until the shop profile exists |
 | POST | /vendor/profile | role vendor | create shop (once); body `{ shopName, description? }` |
 | PATCH | /vendor/profile | V (pending allowed) | body `{ shopName?, description?, logoKey? }`; `description: null` and `logoKey: null` clear those fields |
-| POST | /vendor/payout-account | V | creates provider linked account |
-| GET | /vendor/payout-account | V | |
+| POST | /vendor/payout-account | V | **Deferred: not implemented in Phase 5 (D49).** Linked accounts are created in the Razorpay Dashboard and attached by an admin-only script |
+| GET | /vendor/payout-account | V | **Deferred: not implemented in Phase 5 (D49)** |
 | GET/POST | /vendor/products | V | list own / create; POST `status` is `draft` (default) or `active` |
 | GET/PATCH | /vendor/products/:productId | V | PATCH does not accept `stockQty`; use `/stock` |
 | DELETE | /vendor/products/:productId | V | archives |
@@ -407,14 +408,32 @@ Response 201:
 
 Errors: 409 `OUT_OF_STOCK` `{ "details": [{ "productId": "66f1...b2", "available": 1 }] }`; 422 `COUPON_INVALID` `{ "details": { "reason": "expired" } }`; 502 `PAYMENT_PROVIDER_ERROR`.
 
+Implemented rules (D47, D49, D50, D53). Every check runs before anything is written, in this order: 422 `VALIDATION_ERROR` with `details.reason` `empty_cart`; 409 `OUT_OF_STOCK` / 409 `CONFLICT` (`details.reason: unavailable`); 422 `COUPON_INVALID` for a coupon that no longer validates; 422 `VALIDATION_ERROR` with `details.reason` `zero_total` (total is 0) or `below_minimum_total` (total of 1-99 paise); 409 `CONFLICT` with `details.reason` `vendor_payout_unavailable` and `details.productIds` when a vendor in the cart has no active payout account; 422 `VALIDATION_ERROR` with `details.reason` `payout_below_minimum` (a sub-order payout under 100 paise, `details.productIds` lists its products); 422 `COUPON_INVALID` with `details.reason` `exceeds_platform_margin` (the vendor payouts would exceed what the customer pays). `exceeds_platform_margin` is returned by checkout only, never by `POST /cart/coupon` or the cart preview (a known gap).
+
+Request details (D53): body `{ addressId, couponCode? }` is strict (unknown fields are 422). `couponCode` omitted uses the coupon saved in the cart; `null` means no coupon. The `Idempotency-Key` header is required (8-100 characters of `A-Z a-z 0-9 . _ : -`; 422 with `details[0].path = "headers.idempotency-key"` otherwise). The first call answers **201**; a repeat with the same key answers **200** with the same body; a key whose order expired or failed answers 409 `CONFLICT` (use a new key). 429 after 10 checkout requests per minute per customer. If the provider order cannot be created: 502 `PAYMENT_PROVIDER_ERROR`, the order is expired and the cart (and its saved coupon) is restored.
+
+### GET /orders, GET /orders/:orderId
+
+`GET /orders?page&limit` (customer, newest first, `meta` as everywhere): `[{ id, orderNumber, status, paymentStatus, refundStatus, currency, totalPaise, placedAt, createdAt }]`. `GET /orders/:orderId` adds `subtotalPaise, discountPaise, shippingPaise, shippingAddress, coupon { code, discountPaise } | null` and `subOrders: [{ id, subOrderNumber, shop { name, slug }, items[], subtotalPaise, discountPaise, shippingPaise, customerTotalPaise, fulfillmentStatus, refundStatus, refundedPaise, tracking, deliveredAt, returnWindowEndsAt }]`. While the order is `pending_payment` it also returns `reservationExpiresAt` and `payment { provider, providerOrderId, keyId, amountPaise, currency }` so the page can resume payment. Another customer's order, or an unknown id, is 404. Commission, vendor payout, stock flags and the idempotency key are never returned to customers.
+
 ### POST /payments/verify
 
 Request: `{ "orderId": "66f2...e5", "razorpayOrderId": "order_TEST789", "razorpayPaymentId": "pay_TEST111", "razorpaySignature": "..." }`
-Response 200: `{ "success": true, "data": { "orderId": "66f2...e5", "status": "placed", "paymentStatus": "paid" } }` (also returned, unchanged, if the webhook already processed it). 400 `PAYMENT_VERIFICATION_FAILED` on bad signature or provider/amount mismatch.
+Response 200: `{ "success": true, "data": { "orderId": "66f2...e5", "status": "placed", "paymentStatus": "paid", "refundStatus": "none" } }` (also returned, unchanged, if the webhook already processed it). If the payment arrived after the order expired and the stock was gone, the answer is 200 with `status: "expired", paymentStatus: "paid", refundStatus: "full"` (D54). 400 `PAYMENT_VERIFICATION_FAILED` on bad signature or provider/amount mismatch.
+
+Rules (D48): the signature is checked against the order id **stored** on the server; a `razorpayOrderId` that differs from the stored one is a 400. If the provider reports the payment as `authorized` but not yet `captured`, the answer is 200 with `{ status: "pending_payment", paymentStatus: "unpaid" }` and the client polls `GET /orders/:orderId`; the webhook or the reconcile job completes the order.
 
 ### POST /webhooks/razorpay
 
-Always 200 for valid signature (including duplicates and ignored events); 400 `INVALID_WEBHOOK_SIGNATURE` otherwise. Body per provider (verify V3).
+Always 200 for valid signature (including duplicates and ignored events); 400 `INVALID_WEBHOOK_SIGNATURE` otherwise. Razorpay must receive the answer within 5 seconds.
+
+Headers (verified, D46): `X-Razorpay-Signature` (HMAC of the raw body with the webhook secret) and `x-razorpay-event-id` (unique per event; the duplicate key). Body: `{ "entity": "event", "account_id": "acc_...", "event": "payment.captured", "contains": ["payment"], "payload": { "payment": { "entity": { "id": "pay_...", "order_id": "order_...", "amount": 269820, "currency": "INR", "status": "captured" } } } }` (abridged; the payment entity has more fields). `order.paid` carries both `payload.order` and `payload.payment`.
+
+Phase 5 acts on `payment.captured`, `payment.failed` and `order.paid`. Every other event is stored as `ignored` and answered 200. Phase 6 adds `transfer.processed`, `transfer.failed`, `settlement.processed` and the refund events. Payment state is always confirmed by a provider fetch, never taken from the body. A processing failure (database or provider trouble, or an amount that does not match) is recorded on the `webhookEvents` row as `failed` and still answered 200; it is recovered by a redelivery of the same event (the row is re-claimed atomically, D46) or by the reconcile job, which asks the provider directly.
+
+### POST /payments/mock/complete (development only, D55)
+
+Request `{ "orderId" }` (the customer's own pending order). Response 200: `{ razorpayOrderId, razorpayPaymentId, razorpaySignature }`, i.e. what Razorpay Checkout would hand the browser; send it to `POST /payments/verify`. 404 when the provider is not the MockLedger or `NODE_ENV` is `production`.
 
 ### PATCH /vendor/sub-orders/:id/status
 

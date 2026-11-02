@@ -1,6 +1,7 @@
 import { createApp } from '../src/app.js';
 import { createLogger } from '../src/lib/logger.js';
 import { createHealthService } from '../src/modules/health/health.service.js';
+import { createMockLedger } from '../src/providers/payment/mockLedger.js';
 
 export const silentLogger = createLogger({ level: 'silent', nodeEnv: 'test' });
 
@@ -32,6 +33,8 @@ export function buildTestApp({
   redis = null,
   storage = fakeStorage,
   searchIndex = null,
+  paymentProvider = createMockLedger(),
+  platformCommissionBps = 1000,
 } = {}) {
   const service =
     healthService ??
@@ -53,6 +56,8 @@ export function buildTestApp({
     redis,
     storage,
     searchIndex,
+    paymentProvider,
+    platformCommissionBps,
   });
 }
 
