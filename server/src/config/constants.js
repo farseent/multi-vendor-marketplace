@@ -188,3 +188,18 @@ export const RECONCILIATION_JOB = {
   maxStoredMismatches: 200,
   stuckRefundAfterMs: 60 * 60_000,
 };
+
+// Reviews and invoices (Phase 7)
+export const REVIEW_STATUSES = ['published', 'hidden'];
+export const REVIEW = {
+  editWindowDays: 30, // API_CONTRACTS: edit/delete within 30 days of posting
+  titleMax: 100,
+  bodyMin: 10,
+  bodyMax: 2000,
+  sorts: ['-createdAt', 'createdAt', '-rating', 'rating'],
+};
+export const INVOICE = {
+  // The seller named on the PDF. Not a tax identity: invoices are not GST-compliant (D19).
+  platformName: 'Marketplace',
+  numberPrefix: 'INV',
+};

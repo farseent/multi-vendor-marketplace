@@ -96,3 +96,46 @@ export async function apiFetch(path, { skipRefresh = false, ...options } = {}) {
     return send(path, options);
   }
 }
+
+/**
+ * Downloads a binary file (the invoice PDF) with the same authentication as apiFetch: the Bearer
+ * token, and one refresh when it has expired. A plain link cannot do this because the access token
+ * is kept in memory, never in a cookie. Resolves to { blob, contentDisposition }.
+ */
+export async function apiDownload(path, { baseUrl } = {}) {
+  const call = async () => {
+    let res;
+    try {
+      res = await fetch(`${baseUrl ?? DEFAULT_BASE_URL}${path}`, {
+        credentials: 'include',
+        headers: { ...(accessToken && { Authorization: `Bearer ${accessToken}` }) },
+      });
+    } catch {
+      throw new ApiError({ status: 0, code: 'NETWORK_ERROR', message: 'Cannot reach the server' });
+    }
+    if (res.ok) return res;
+    let error;
+    try {
+      error = (await res.json())?.error;
+    } catch {
+      // Non-JSON error body: the generic message below is used.
+    }
+    throw new ApiError({
+      status: res.status,
+      code: error?.code ?? 'UNKNOWN_ERROR',
+      message: error?.message ?? `Request failed (${res.status})`,
+      details: error?.details,
+      requestId: error?.requestId ?? res.headers.get('X-Request-Id') ?? undefined,
+    });
+  };
+
+  let res;
+  try {
+    res = await call();
+  } catch (err) {
+    if (err.code !== 'TOKEN_EXPIRED') throw err;
+    await refreshSession();
+    res = await call();
+  }
+  return { blob: await res.blob(), contentDisposition: res.headers.get('Content-Disposition') };
+}

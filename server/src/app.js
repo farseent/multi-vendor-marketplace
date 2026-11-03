@@ -30,6 +30,9 @@ import { createCouponsController } from './modules/coupons/coupons.controller.js
 import { createCouponsRouter } from './modules/coupons/coupons.routes.js';
 import { createCouponsService } from './modules/coupons/coupons.service.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
+import { createInvoicesController } from './modules/invoices/invoices.controller.js';
+import { createInvoicesRouter } from './modules/invoices/invoices.routes.js';
+import { createInvoicesService } from './modules/invoices/invoices.service.js';
 import { createCheckoutService } from './modules/orders/checkout.service.js';
 import { createOrdersController } from './modules/orders/orders.controller.js';
 import { createFulfillmentController } from './modules/orders/fulfillment.controller.js';
@@ -38,6 +41,9 @@ import { createFulfillmentService } from './modules/orders/fulfillment.service.j
 import { createRefundsController } from './modules/refunds/refunds.controller.js';
 import { createRefundsRouter } from './modules/refunds/refunds.routes.js';
 import { createRefundsService } from './modules/refunds/refunds.service.js';
+import { createReviewsController } from './modules/reviews/reviews.controller.js';
+import { createReviewsRouter } from './modules/reviews/reviews.routes.js';
+import { createReviewsService } from './modules/reviews/reviews.service.js';
 import { createReconciliationService } from './modules/settlements/reconciliation.service.js';
 import { createSettlementsController } from './modules/settlements/settlements.controller.js';
 import { createSettlementsRouter } from './modules/settlements/settlements.routes.js';
@@ -102,7 +108,7 @@ export function createApp({
     cors({
       origin: corsOrigins,
       credentials: true,
-      exposedHeaders: ['X-Request-Id', 'X-Search-Fallback'],
+      exposedHeaders: ['X-Request-Id', 'X-Search-Fallback', 'Content-Disposition'],
     }),
   );
   // Webhooks need the RAW bytes for the signature, so their router (with its own raw-body parser)
@@ -195,6 +201,11 @@ export function createApp({
     paymentProvider,
   });
   webhookRouter.post('/razorpay', paymentsController.razorpayWebhook);
+  // --- Phase 7: reviews and invoices ---
+  const reviewsService = createReviewsService({ audit, cache, searchOutbox });
+  const invoicesService = createInvoicesService();
+  app.set('phase7Services', { reviewsService, invoicesService });
+
   // The background jobs (server.js) use the same service instances as the HTTP handlers.
   app.set('paymentServices', { lifecycle, paymentsService });
   app.set('phase6Services', {
@@ -250,6 +261,14 @@ export function createApp({
     createSettlementsRouter({
       controller: createSettlementsController({ settlementsService, reconciliationService }),
       loadShop,
+    }),
+    createReviewsRouter({
+      controller: createReviewsController({ reviewsService }),
+      authenticate,
+    }),
+    createInvoicesRouter({
+      controller: createInvoicesController({ invoicesService }),
+      authenticate,
     }),
   ];
   app.set('apiRouters', routers);

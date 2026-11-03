@@ -65,8 +65,8 @@ Generated from the registered route table: for each route × role (anonymous, cu
 
 ### Reviews, invoices, admin
 
-- [ ] Review eligibility and uniqueness enforced; aggregates correct
-- [ ] Invoice access limited to owner and paid orders
+- [ ] Review eligibility and uniqueness enforced; aggregates correct _(written in `reviews.test.js`; **not run**, see HANDOVER)_
+- [ ] Invoice access limited to owner and paid orders _(written in `invoices.test.js`; **not run**)_
 - [ ] Analytics equals fixture-computed values; every admin mutation audited
 
 ### Non-functional

@@ -460,10 +460,14 @@ Errors: 404 unknown or never-paid sub-order; 409 `CONFLICT` with `details.reason
 - `POST /admin/settlements/:settlementId/release` (no body): manual release, ignores the return window only. 200 `{ id, status: "released", releasedAt, netPayoutPaise }`; 409 `INVALID_STATE_TRANSITION` if not `pending_release`; 409 `CONFLICT` `details.reason` = `open_refund | nothing_to_release | payout_account_inactive | no_provider_transfer | changed_meanwhile`; 502 `PAYMENT_PROVIDER_ERROR` (the settlement stays `pending_release`); audited as `settlement.released`.
 - `POST /admin/reconciliation/run` (no body): 201 with the report; 409 `CONFLICT` `details.reason: "run_in_progress"`; audited as `reconciliation.run`. `GET /admin/reconciliation?page=&limit=`: reports, newest first. Report: `{ id, runAt, status: "ok"|"mismatch", trigger, totals, mismatches[] }`.
 
-### POST /products/:productId/reviews
+### Reviews and invoices (implemented, Phase 7, D61-D63)
 
-Request: `{ "rating": 5, "title": "Great fit", "body": "Fabric is lovely and true to size." }` → 201 review.
-Errors: 403 `FORBIDDEN` (no delivered purchase), 409 `REVIEW_EXISTS`.
+- `GET /products/:productId/reviews?page&limit&sort` (public; `sort` = `-createdAt` (default), `createdAt`, `-rating`, `rating`): published reviews of an active product of an approved shop, else 404. Item: `{ id, rating, title, body, authorName, verifiedPurchase, createdAt, updatedAt }`.
+- `GET /products/:productId/reviews/mine` (C): `{ eligible, review }`; `review` is the caller's own (any status) with `status` and `editableUntil`, or `null`. Added in Phase 7 so the page knows whether to show the form.
+- `POST /products/:productId/reviews` (C): body `{ rating: 1-5 int, title?: 1-100, body: 10-2000 }` (unknown keys 422) -> 201 `{ id, productId, rating, title, body, status, editableUntil, createdAt, updatedAt }`. 404 unknown product; 403 `FORBIDDEN` (`details.reason: no_delivered_purchase`); 409 `REVIEW_EXISTS`.
+- `PATCH /reviews/:reviewId` (C, owner): at least one of `rating, title (null removes), body` -> 200 same shape. `DELETE /reviews/:reviewId` -> 200 `{ id, deleted: true }`. Not yours or missing: 404; after 30 days: 409 `CONFLICT` `details.reason: edit_window_closed`.
+- `PATCH /admin/reviews/:reviewId/status` (A): `{ status: "hidden"|"published" }` -> 200 `{ id, productId, status, changed }`; 404; audited as `review.status_changed` when `changed`.
+- `GET /orders/:orderId/invoice` (C, owner): 200 `application/pdf`, `Content-Disposition: attachment; filename="INV-YYYY-NNNNNN.pdf"`, `Cache-Control: private, no-store`. 404 not yours; 409 `CONFLICT` `details.reason: order_not_paid`. Errors are the normal JSON envelope. `Content-Disposition` is in the CORS exposed headers.
 
 ### GET /health/ready
 

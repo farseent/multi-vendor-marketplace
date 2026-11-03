@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import AddToCart from '../components/AddToCart.jsx';
+import ReviewsSection from '../components/ReviewsSection.jsx';
 import { apiFetch } from '../lib/api.js';
 import { formatINR } from '../lib/money.js';
 import './catalog.css';
@@ -59,6 +60,7 @@ export default function ProductPage() {
           ))}
         </dl>
       )}
+      <ReviewsSection product={product} />
     </article>
   );
 }

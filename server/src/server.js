@@ -22,7 +22,9 @@ import { Coupon } from './modules/coupons/coupons.model.js';
 import { CouponRedemption } from './modules/coupons/redemptions.model.js';
 import { Counter, Order, SubOrder } from './modules/orders/orders.model.js';
 import { Payment, WebhookEvent } from './modules/payments/payments.model.js';
+import { Invoice } from './modules/invoices/invoices.model.js';
 import { Refund } from './modules/refunds/refunds.model.js';
+import { Review } from './modules/reviews/reviews.model.js';
 import { Settlement } from './modules/settlements/settlements.model.js';
 import { createPaymentProvider } from './providers/payment/index.js';
 import { createHealthService } from './modules/health/health.service.js';
@@ -79,6 +81,9 @@ async function main() {
     Settlement.init(),
     Refund.init(),
     ReconciliationReport.init(),
+    // Phase 7: one review per customer and product, one invoice per order, unique numbers.
+    Review.init(),
+    Invoice.init(),
   ]);
 
   // Elasticsearch is optional at boot (D12): if it is down, search uses the Mongo fallback and

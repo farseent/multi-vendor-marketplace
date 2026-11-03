@@ -114,9 +114,9 @@ Acceptance:
 Scope: review CRUD with eligibility, rating aggregates, moderation, PDF invoice, UI.
 Acceptance:
 
-- Review without a `delivered` sub-order containing that product returns 403; second review for the same product returns 409.
-- `ratingAvg/ratingCount` correct after create/edit/delete/hide (test with 5 operations) and cache invalidated.
-- Invoice PDF downloads only for the order's owner, only when paid; lists every vendor's items, discount, total; numbering is gap-tolerant but unique under 20 concurrent generations.
+- [ ] Review without a `delivered` sub-order containing that product returns 403; second review for the same product returns 409. (`reviews.test.js`; **tests written, not run**)
+- [ ] `ratingAvg/ratingCount` correct after create/edit/delete/hide (test with 5 operations) and cache invalidated. (`reviews.test.js`, 7 operations, plus 8 concurrent creates; `phase7.unit.test.js`; **not run**)
+- [ ] Invoice PDF downloads only for the order's owner, only when paid; lists every vendor's items, discount, total; numbering is gap-tolerant but unique under 20 concurrent generations. (`invoices.test.js`; **not run**)
 
 ## Phase 8: Admin console and analytics
 

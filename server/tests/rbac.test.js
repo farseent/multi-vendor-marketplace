@@ -50,6 +50,14 @@ describe('route table', () => {
         'GET /api/v1/orders/:orderId',
         'POST /api/v1/payments/verify',
         'POST /api/v1/payments/mock/complete',
+        // Phase 7
+        'GET /api/v1/products/:productId/reviews',
+        'GET /api/v1/products/:productId/reviews/mine',
+        'POST /api/v1/products/:productId/reviews',
+        'PATCH /api/v1/reviews/:reviewId',
+        'DELETE /api/v1/reviews/:reviewId',
+        'PATCH /api/v1/admin/reviews/:reviewId/status',
+        'GET /api/v1/orders/:orderId/invoice',
       ]),
     );
   });
@@ -74,6 +82,8 @@ const ANONYMOUS_OK = new Set([
   'GET /api/v1/products/:slug',
   'GET /api/v1/products/search',
   'GET /api/v1/shops/:shopSlug',
+  // Phase 7: reading a product's published reviews is public
+  'GET /api/v1/products/:productId/reviews',
 ]);
 
 describe('authorization matrix (every registered route)', () => {
@@ -103,6 +113,26 @@ describe('authorization matrix (every registered route)', () => {
       /^\/api\/v1\/(checkout|orders|payments)(\/|$)/.test(r.path),
     );
     expect(customerOnly.length).toBeGreaterThanOrEqual(5);
+    for (const route of customerOnly) {
+      for (const role of ['vendor', 'admin']) {
+        expect(
+          (await call(route, bearer(role))).status,
+          `${role} ${route.method} ${route.path}`,
+        ).toBe(403);
+      }
+    }
+  });
+
+  // Phase 7: writing reviews and downloading an invoice belong to customers only.
+  it('vendor and admin tokens on every customer-only Phase 7 route -> 403', async () => {
+    const customerOnly = routes.filter(
+      (r) =>
+        /^\/api\/v1\/reviews\//.test(r.path) ||
+        r.path.endsWith('/reviews/mine') ||
+        r.path.endsWith('/invoice') ||
+        (r.method === 'POST' && r.path === '/api/v1/products/:productId/reviews'),
+    );
+    expect(customerOnly.length).toBe(5);
     for (const route of customerOnly) {
       for (const role of ['vendor', 'admin']) {
         expect(

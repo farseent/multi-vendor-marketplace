@@ -21,6 +21,7 @@ import {
   fulfillmentErrorMessage,
   refundLine,
 } from '../lib/fulfillment.js';
+import { canDownloadInvoice, downloadInvoice, invoiceErrorMessage } from '../lib/invoices.js';
 import { formatINR } from '../lib/money.js';
 import './orders.css';
 
@@ -148,6 +149,19 @@ function CancelButton({ orderId, sub }) {
   );
 }
 
+/** Saves the invoice PDF. The button only shows for paid orders; the API checks again. */
+function InvoiceButton({ orderId }) {
+  const download = useMutation({ mutationFn: () => downloadInvoice(orderId) });
+  return (
+    <>
+      <button type="button" disabled={download.isPending} onClick={() => download.mutate()}>
+        {download.isPending ? 'Preparing invoice…' : 'Download invoice (PDF)'}
+      </button>
+      {download.error && <p role="alert">{invoiceErrorMessage(download.error)}</p>}
+    </>
+  );
+}
+
 /** One order: status, items per seller, totals, and the payment step while it is unpaid. */
 export default function OrderPage() {
   const { orderId } = useParams();
@@ -182,6 +196,8 @@ export default function OrderPage() {
       <p className="order-status" role="status">
         {orderStatusLabel(order)}
       </p>
+
+      {canDownloadInvoice(order) && <InvoiceButton orderId={order.id} />}
 
       {order.status === 'pending_payment' && (
         <PaymentPanel order={order} autoPay={Boolean(location.state?.autoPay)} />
