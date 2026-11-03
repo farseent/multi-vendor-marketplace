@@ -75,7 +75,7 @@ Acceptance:
 
 Scope: `PaymentProvider` interface + Razorpay and MockLedger implementations, checkout transaction, commission calculation, provider order with transfers, verify endpoint, webhook handler with idempotency, reservation-release job, reconcile-pending job, order UI + provider widget.
 
-**Gate (resolved 2026-11-01):** V1-V3 were researched (DECISIONS D44-D48 and its source register) and the owner's choices are Accepted as D47-D51. V1's original definition is unknown; D44 gives it a new, inferred one. D52-D56 record decisions made during implementation and await the owner's review.
+**Gate (resolved 2026-11-01):** V1-V3 were researched (DECISIONS D44-D48 and its source register) and the owner's choices are Accepted as D47-D51. V1's original definition is unknown; D44 gives it a new, inferred one. D52-D56 record decisions made during implementation and remain Proposed pending owner review.
 
 **Delivered in five slices:** 5a `PaymentProvider` contract, MockLedger, commission maths with property tests, the new models; 5b `link-account` admin script and the checkout transaction; 5c `markOrderPaid`, `/payments/verify`, the webhook with atomic claiming; 5d reservation-release and reconcile jobs, late capture; 5e Razorpay adapter, order endpoints, checkout/orders UI. Slices 5a-5d run on MockLedger and HTTP stubs and never need Razorpay access; only the manual run below does.
 
@@ -94,7 +94,7 @@ Acceptance (automated checks are named; "not run" means it needs the owner's Raz
 - [x] (D49) The `link-account` script changes nothing and exits non-zero for a non-admin actor, an unknown or unapproved vendor, a malformed or provider-unknown account id, an account already attached to another vendor, or a replacement without `--replace`; on success it writes exactly one `vendor.payout_account_attached` audit entry. (`linkAccount.test.js`; CLI also run once)
 - [x] (D46) 20 concurrent deliveries of one event id whose row is `failed` (and, separately, `received` and older than 60 s) run the handler exactly once. (`payments.test.js`)
 - [x] (D51) The app refuses to boot when `PLATFORM_COMMISSION_BPS` is not an integer from 0 to 5000, and uses 1000 when it is unset. (`phase5a.unit.test.js`; production refusal of the mock also run once)
-- [ ] Manual test-mode payment completes end to end with provider test credentials (recorded in a short demo video/log; **not run**: it needs Route enabled on your test account, a linked account, auto-capture, a webhook URL Razorpay accepts, and the checks in DECISIONS A4, A8, A9, A10).
+- [ ] Manual test-mode payment completes end to end with provider test credentials (recorded in a short demo video/log; **intentionally deferred to the Phase 5 manual verification pass**: it needs Route enabled on your test account, a linked account, auto-capture, a webhook URL Razorpay accepts, and the checks in DECISIONS A4, A8, A9, A10).
 
 ## Phase 6: Fulfillment, refunds, settlements
 
@@ -102,21 +102,24 @@ Scope: vendor sub-order status flow, customer cancel, admin refund, commission r
 Acceptance:
 
 - [x] Every disallowed transition in the table returns 409 (table-driven test). (`fulfillment.test.js`: 25 pairs through the API; `phase6.unit.test.js`: every actor)
-- [x] Partial refunds sum correctly: refunding 3 × arbitrary partial amounts with a final remainder refund leaves `commissionReversed` total == commission and `netPayout` ≥ 0 (property test). (`phase6.unit.test.js`, 1,000 runs each for vendor-funded and platform-funded; `refunds.test.js` through the API)
+- [x] Partial refunds preserve the D9 commission-reversal total and non-negative settlement payout for the previously implemented behavior (property test; existing test coverage must be revised for the accepted D57 vendor-debit rule below). (`phase6.unit.test.js`, `refunds.test.js`)
+- [ ] **Accepted D57 change, implementation/test follow-up:** for platform-funded coupons, calculate `vendorDebitPaise` proportionally from the actual vendor payout, with the final refund taking the remaining payout; a full refund must leave vendor net payout at zero. Keep `commissionReversedPaise` under D9. Add/update property and API tests for partial and full refunds, including odd-paise rounding and final remainder behavior.
 - [x] Refund total can never exceed `customerTotalPaise` (409). (`refunds.test.js`, including 5 concurrent refunds)
 - [x] Cancel before shipping restores stock exactly once (double-call test). (`fulfillment.test.js`, also 3 concurrent cancels)
 - [x] Settlement moves to `pending_release` only on `delivered`; release job ignores settlements with an open refund or return window not elapsed. (`settlements.test.js`)
 - [x] Reconciliation run on seeded data with one deliberately mismatched transfer reports exactly that mismatch. (`reconciliation.test.js`)
-- [ ] Manual test-mode run of a refund before and after release (**not run**: needs your Razorpay account; DECISIONS A6, A11).
+- [ ] Manual Razorpay test-mode run of a refund before and after transfer release (**intentionally deferred to the Phase 6 manual verification pass**; needs your Razorpay account and checks A6/A11).
 
 ## Phase 7: Reviews and invoices
 
 Scope: review CRUD with eligibility, rating aggregates, moderation, PDF invoice, UI.
+
+Manual browser checks for reviews and invoice downloads are intentionally deferred to the Phase 7 manual verification pass; automated tests/build are reported passing by the owner.
 Acceptance:
 
-- [ ] Review without a `delivered` sub-order containing that product returns 403; second review for the same product returns 409. (`reviews.test.js`; **tests written, not run**)
-- [ ] `ratingAvg/ratingCount` correct after create/edit/delete/hide (test with 5 operations) and cache invalidated. (`reviews.test.js`, 7 operations, plus 8 concurrent creates; `phase7.unit.test.js`; **not run**)
-- [ ] Invoice PDF downloads only for the order's owner, only when paid; lists every vendor's items, discount, total; numbering is gap-tolerant but unique under 20 concurrent generations. (`invoices.test.js`; **not run**)
+- [x] Review without a `delivered` sub-order containing that product returns 403; second review for the same product returns 409. (`reviews.test.js`; owner reports automated server tests passed)
+- [x] `ratingAvg/ratingCount` correct after create/edit/delete/hide (test with 5 operations) and cache invalidated. (`reviews.test.js`, 7 operations, plus 8 concurrent creates; `phase7.unit.test.js`; owner reports automated server tests passed)
+- [x] Invoice PDF downloads only for the order's owner, only when paid; lists every vendor's items, discount, total; numbering is gap-tolerant but unique under 20 concurrent generations. (`invoices.test.js`; owner reports automated server tests passed)
 
 ## Phase 8: Admin console and analytics
 

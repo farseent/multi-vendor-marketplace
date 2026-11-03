@@ -120,15 +120,15 @@ Indexes: `{providerOrderId:1}` unique; `{providerPaymentId:1}` unique sparse; `{
 
 ## refunds
 
-`paymentId`, `orderId`, `subOrderId?` (absent for an order-level `failed_late_capture` refund), `amountPaise`, `commissionReversedPaise`, `vendorDebitPaise`, `reason` (enum `customer_cancel|vendor_cancel|admin|failed_late_capture`), `note?`, `status: initiated|processed|failed`, `providerRefundId` (unique sparse), `providerReversalId?` (the vendor transfer reversal made for this refund, kept so a retry never repeats it, D57), `providerCallAt?` (atomic claim of the provider call, 60 s), `requestedBy?` (absent when the system refunds), `idempotencyKey` (unique).
+`paymentId`, `orderId`, `subOrderId?` (absent for an order-level `failed_late_capture` refund), `amountPaise`, `commissionReversedPaise`, `vendorDebitPaise`, `reason` (enum `customer_cancel|vendor_cancel|admin|failed_late_capture`), `note?`, `status: initiated|processed|failed`, `providerRefundId` (unique sparse), `providerReversalId?` (the vendor transfer reversal made for this refund, kept so a retry never repeats it, D57), `providerCallAt?` (atomic claim of the provider call, 60 s), `requestedBy?` (absent when the system refunds), `idempotencyKey` (unique). `commissionReversedPaise` follows D9; `vendorDebitPaise` is calculated proportionally from the original `vendorPayoutPaise` and `customerTotalPaise`, with the final refund taking the remaining vendor payout (D57). For platform-funded coupons this is intentionally not always `amountPaise - commissionReversedPaise`.
 Indexes: `{subOrderId:1}`; `{providerRefundId:1}` unique sparse; `{idempotencyKey:1}` unique.
-Rule: `sum(refunds.amountPaise where status in initiated|processed) <= subOrder.customerTotalPaise`.
+Rules: `sum(refunds.amountPaise where status in initiated|processed) <= subOrder.customerTotalPaise`; a calculated `vendorDebitPaise` of 1-99 paise is rejected before writes/provider calls, while 0 is allowed. `vendorDebitPaise` values are accumulated into `settlements.refundAdjustmentPaise`.
 
 ## settlements
 
 `subOrderId` (unique), `orderId`, `vendorId`, `grossPaise` (vendor base before commission), `commissionPaise`, `refundAdjustmentPaise`, `netPayoutPaise`, `status: not_eligible|pending_release|released|settled|reversed|failed`, `providerTransferId?`, `eligibleAt?`, `releasedAt?`, `settledAt?`, `failureReason?`.
 Indexes: `{subOrderId:1}` unique; `{vendorId:1,status:1,createdAt:-1}`; `{status:1,eligibleAt:1}`.
-Rule: `netPayoutPaise = grossPaise - commissionPaise - refundAdjustmentPaise`, floor 0. `refundAdjustmentPaise` is the sum of the vendor debits of the sub-order's refunds. Transitions (D59): `not_eligible` -> `pending_release` | `reversed`; `pending_release` -> `released` | `reversed` | `failed`; `released` -> `settled` | `failed`; `settled`, `reversed`, `failed` are final.
+Rule: `netPayoutPaise = grossPaise - commissionPaise - refundAdjustmentPaise`, floor 0. `refundAdjustmentPaise` is the sum of `vendorDebitPaise` for the sub-order's refunds. Admin manual release may bypass the 7-day return window only; all other release guards still apply (D59). Reconciliation reports mismatches but never mutates financial records (D60). Transitions (D59): `not_eligible` -> `pending_release` | `reversed`; `pending_release` -> `released` | `reversed` | `failed`; `released` -> `settled` | `failed`; `settled`, `reversed`, `failed` are final.
 
 ## coupons
 
@@ -148,15 +148,15 @@ Indexes: `{code:1}` unique; `{vendorId:1}`.
 
 ## couponRedemptions
 
-`couponId`, `customerId`, `orderId`, `discountPaise`, `status: reserved|redeemed|released`. Indexes: `{couponId:1,orderId:1}` unique; `{couponId:1,customerId:1,status:1}`.
+`couponId`, `customerId`, `orderId`, `discountPaise`, `status: reserved|redeemed|released`. An unpaid reservation may become `released` on expiry/cancellation; once `redeemed` after payment, it remains consumed even if the paid order or a sub-order is later cancelled or refunded (D21/D57). Indexes: `{couponId:1,orderId:1}` unique; `{couponId:1,customerId:1,status:1}`.
 
 ## reviews
 
-`productId`, `vendorId`, `customerId`, `subOrderId`, `rating` (int 1-5), `title?` (≤100), `body` (10-2000), `status: published|hidden`. Implemented Phase 7 as written; `ratingAvg/ratingCount` on `products` are recomputed from `published` rows (D62). Indexes: `{customerId:1,productId:1}` unique; `{productId:1,status:1,createdAt:-1}`.
+`productId`, `vendorId`, `customerId`, `subOrderId`, `rating` (int 1-5), `title?` (≤100), `body` (10-2000), `status: published|hidden`. A delivered purchase remains eligible after a full refund; hard deletion permits re-review with a new 30-day edit window; editing a hidden review does not republish it (D61). `ratingAvg/ratingCount` on `products` are recomputed from `published` rows and `ratingAvg` is stored to 2 decimal places (D62). Indexes: `{customerId:1,productId:1}` unique; `{productId:1,status:1,createdAt:-1}`.
 
 ## invoices
 
-`orderId` (unique), `invoiceNumber` (unique, `INV-YYYY-NNNNNN` from counters), `generatedAt`. PDF is generated on demand from order data (not stored). Implemented Phase 7 (D63); indexes `{orderId:1}` unique, `{invoiceNumber:1}` unique; the year in the number is the UTC year of generation.
+`orderId` (unique), `invoiceNumber` (unique, `INV-YYYY-NNNNNN` from counters), `generatedAt`. PDF is generated on demand from order data (not stored); platform name is the generic constant `Marketplace` for now (D63). Implemented Phase 7 (D63); indexes `{orderId:1}` unique, `{invoiceNumber:1}` unique; the year in the number is the UTC year of generation.
 
 ## Supporting collections
 
@@ -165,7 +165,7 @@ Indexes: `{code:1}` unique; `{vendorId:1}`.
 - `searchOutbox`: `productId, op:'upsert|delete', attempts, nextAttemptAt, lastError?, createdAt`; indexes `{nextAttemptAt:1}` and `{productId:1}`.
   `op` is advisory; the sync job determines whether to index or delete using the current product and vendor state.
 - `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; written by admin mutations for `vendor.status_changed`, `vendor.commission_changed`, `category.created`, `category.updated`, and `search.reindexed`, `review.status_changed` (`meta { from, to, productId }`), `coupon.created`, `coupon.updated`, and `vendor.payout_account_attached` (written by the `link-account` admin script, `meta { previousLinkedAccountId, linkedAccountId }`); index `{entityType:1,entityId:1,createdAt:-1}`.
-- `reconciliationReports`: `runAt`, `status` (`ok|mismatch`), `trigger` (`job|admin`), `triggeredBy?`, `totals{settlementsChecked, skippedOpenRefund, localNetPayoutPaise, providerRemainingPaise, mismatchCount, truncated}`, `mismatches[]` (`type, entityType, settlementId?, refundId?, subOrderId?, providerTransferId?, expected?, actual?, detail?`; at most 200 stored). Index `{runAt:-1}`. Types: see D60.
+- `reconciliationReports`: `runAt`, `status` (`ok|mismatch`), `trigger` (`job|admin`), `triggeredBy?` (reports only; reconciliation is read-only and does not correct financial records, D60), `totals{settlementsChecked, skippedOpenRefund, localNetPayoutPaise, providerRemainingPaise, mismatchCount, truncated}`, `mismatches[]` (`type, entityType, settlementId?, refundId?, subOrderId?, providerTransferId?, expected?, actual?, detail?`; at most 200 stored). Index `{runAt:-1}`. Types: see D60.
 - `jobLocks`: `{ _id: jobName, lockedUntil, owner }`.
 
 ## Relationship summary
