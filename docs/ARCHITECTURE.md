@@ -64,7 +64,7 @@ Razorpay delivery facts (verified, D46): at-least-once delivery; a response slow
 
 ### 3.3 Fulfillment
 
-Vendor `PATCH /vendor/sub-orders/:id/status` along an allowed transition table (see API_CONTRACTS). `delivered` sets `deliveredAt` and `returnWindowEndsAt = +7d`, and sets the settlement to `pending_release`. Order becomes `completed` when all sub-orders are `delivered` or `cancelled`.
+Vendor `PATCH /vendor/sub-orders/:id/status` along an allowed transition table (see API_CONTRACTS). `delivered` sets `deliveredAt` and `returnWindowEndsAt = +7d`, and sets the settlement to `pending_release`. Order becomes `completed` when all sub-orders are `delivered` or `cancelled` and at least one is `delivered`, and `cancelled` when all are `cancelled` (D58 7).
 
 ### 3.4 Refunds
 

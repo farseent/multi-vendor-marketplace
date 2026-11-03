@@ -101,12 +101,13 @@ Acceptance (automated checks are named; "not run" means it needs the owner's Raz
 Scope: vendor sub-order status flow, customer cancel, admin refund, commission reversal, settlement state machine and release job, reconciliation job and admin report, vendor settlement view.
 Acceptance:
 
-- Every disallowed transition in the table returns 409 (table-driven test).
-- Partial refunds sum correctly: refunding 3 × arbitrary partial amounts with a final remainder refund leaves `commissionReversed` total == commission and `netPayout` ≥ 0 (property test).
-- Refund total can never exceed `customerTotalPaise` (409).
-- Cancel before shipping restores stock exactly once (double-call test).
-- Settlement moves to `pending_release` only on `delivered`; release job ignores settlements with an open refund or return window not elapsed.
-- Reconciliation run on seeded data with one deliberately mismatched transfer reports exactly that mismatch.
+- [x] Every disallowed transition in the table returns 409 (table-driven test). (`fulfillment.test.js`: 25 pairs through the API; `phase6.unit.test.js`: every actor)
+- [x] Partial refunds sum correctly: refunding 3 × arbitrary partial amounts with a final remainder refund leaves `commissionReversed` total == commission and `netPayout` ≥ 0 (property test). (`phase6.unit.test.js`, 1,000 runs each for vendor-funded and platform-funded; `refunds.test.js` through the API)
+- [x] Refund total can never exceed `customerTotalPaise` (409). (`refunds.test.js`, including 5 concurrent refunds)
+- [x] Cancel before shipping restores stock exactly once (double-call test). (`fulfillment.test.js`, also 3 concurrent cancels)
+- [x] Settlement moves to `pending_release` only on `delivered`; release job ignores settlements with an open refund or return window not elapsed. (`settlements.test.js`)
+- [x] Reconciliation run on seeded data with one deliberately mismatched transfer reports exactly that mismatch. (`reconciliation.test.js`)
+- [ ] Manual test-mode run of a refund before and after release (**not run**: needs your Razorpay account; DECISIONS A6, A11).
 
 ## Phase 7: Reviews and invoices
 

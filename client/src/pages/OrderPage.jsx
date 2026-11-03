@@ -15,6 +15,12 @@ import {
   secondsLeft,
   toVerifyBody,
 } from '../lib/checkout.js';
+import {
+  cancelSubOrder,
+  canCancelSubOrder,
+  fulfillmentErrorMessage,
+  refundLine,
+} from '../lib/fulfillment.js';
 import { formatINR } from '../lib/money.js';
 import './orders.css';
 
@@ -113,6 +119,35 @@ function PaymentPanel({ order, autoPay }) {
   );
 }
 
+/** Cancel one seller's part of the order, until they ship it. The API refunds it in full. */
+function CancelButton({ orderId, sub }) {
+  const queryClient = useQueryClient();
+  const cancel = useMutation({
+    mutationFn: () => cancelSubOrder(orderId, sub.id),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: orderKey(orderId) });
+      queryClient.invalidateQueries({ queryKey: ORDERS_KEY });
+    },
+  });
+  return (
+    <>
+      {cancel.error && <p role="alert">{fulfillmentErrorMessage(cancel.error)}</p>}
+      <button
+        type="button"
+        className="danger"
+        disabled={cancel.isPending}
+        onClick={() => {
+          if (window.confirm('Cancel this part of your order? You will be refunded in full.')) {
+            cancel.mutate();
+          }
+        }}
+      >
+        {cancel.isPending ? 'Cancelling…' : 'Cancel this part of the order'}
+      </button>
+    </>
+  );
+}
+
 /** One order: status, items per seller, totals, and the payment step while it is unpaid. */
 export default function OrderPage() {
   const { orderId } = useParams();
@@ -160,6 +195,15 @@ export default function OrderPage() {
           <p>
             Status: <strong>{sub.fulfillmentStatus.replaceAll('_', ' ')}</strong>
           </p>
+          {sub.tracking && (
+            <p>
+              Tracking: {sub.tracking.carrier} {sub.tracking.trackingNumber}
+            </p>
+          )}
+          {refundLine(sub) && <p role="status">{refundLine(sub)}</p>}
+          {canCancelSubOrder(sub) && order.status === 'placed' && (
+            <CancelButton orderId={order.id} sub={sub} />
+          )}
           <ul className="cart-lines">
             {sub.items.map((item) => (
               <li key={item.productId} className="cart-line">

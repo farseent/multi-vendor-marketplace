@@ -32,6 +32,16 @@ import { createCouponsService } from './modules/coupons/coupons.service.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
 import { createCheckoutService } from './modules/orders/checkout.service.js';
 import { createOrdersController } from './modules/orders/orders.controller.js';
+import { createFulfillmentController } from './modules/orders/fulfillment.controller.js';
+import { createFulfillmentRouter } from './modules/orders/fulfillment.routes.js';
+import { createFulfillmentService } from './modules/orders/fulfillment.service.js';
+import { createRefundsController } from './modules/refunds/refunds.controller.js';
+import { createRefundsRouter } from './modules/refunds/refunds.routes.js';
+import { createRefundsService } from './modules/refunds/refunds.service.js';
+import { createReconciliationService } from './modules/settlements/reconciliation.service.js';
+import { createSettlementsController } from './modules/settlements/settlements.controller.js';
+import { createSettlementsRouter } from './modules/settlements/settlements.routes.js';
+import { createSettlementsService } from './modules/settlements/settlements.service.js';
 import { createOrderLifecycle } from './modules/orders/orders.lifecycle.js';
 import { createPaymentsController } from './modules/payments/payments.controller.js';
 import { createPaymentsRouter } from './modules/payments/payments.routes.js';
@@ -155,10 +165,28 @@ export function createApp({
     logger,
     nodeEnv,
   });
+  // --- Phase 6: fulfilment, refunds, settlements, reconciliation ---
+  const jobLocks = createJobLocks();
+  const refundsService = createRefundsService({ paymentProvider, audit, logger });
+  const fulfillmentService = createFulfillmentService({
+    lifecycle,
+    refundsService,
+    audit,
+    logger,
+  });
+  const settlementsService = createSettlementsService({ paymentProvider, audit, logger });
+  const reconciliationService = createReconciliationService({
+    paymentProvider,
+    jobLocks,
+    audit,
+    logger,
+  });
   const webhooksService = createWebhooksService({
     provider: paymentProvider.name === 'mock' ? 'razorpay' : paymentProvider.name,
     paymentProvider,
     paymentsService,
+    refundsService,
+    settlementsService,
     logger,
   });
   const paymentsController = createPaymentsController({
@@ -169,6 +197,12 @@ export function createApp({
   webhookRouter.post('/razorpay', paymentsController.razorpayWebhook);
   // The background jobs (server.js) use the same service instances as the HTTP handlers.
   app.set('paymentServices', { lifecycle, paymentsService });
+  app.set('phase6Services', {
+    refundsService,
+    settlementsService,
+    reconciliationService,
+    jobLocks,
+  });
 
   // Module routers declare full paths relative to /api/v1 (no nesting). Keeping the list on the
   // app lets tests enumerate every registered route (see tests/helpers.js listApiRoutes).
@@ -205,6 +239,18 @@ export function createApp({
       limiters,
     }),
     createPaymentsRouter({ controller: paymentsController, authenticate }),
+    createFulfillmentRouter({
+      controller: createFulfillmentController({ fulfillmentService, ordersService }),
+      authenticate,
+      loadShop,
+    }),
+    createRefundsRouter({
+      controller: createRefundsController({ refundsService, fulfillmentService }),
+    }),
+    createSettlementsRouter({
+      controller: createSettlementsController({ settlementsService, reconciliationService }),
+      loadShop,
+    }),
   ];
   app.set('apiRouters', routers);
 

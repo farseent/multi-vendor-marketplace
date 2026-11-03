@@ -429,21 +429,36 @@ Always 200 for valid signature (including duplicates and ignored events); 400 `I
 
 Headers (verified, D46): `X-Razorpay-Signature` (HMAC of the raw body with the webhook secret) and `x-razorpay-event-id` (unique per event; the duplicate key). Body: `{ "entity": "event", "account_id": "acc_...", "event": "payment.captured", "contains": ["payment"], "payload": { "payment": { "entity": { "id": "pay_...", "order_id": "order_...", "amount": 269820, "currency": "INR", "status": "captured" } } } }` (abridged; the payment entity has more fields). `order.paid` carries both `payload.order` and `payload.payment`.
 
-Phase 5 acts on `payment.captured`, `payment.failed` and `order.paid`. Every other event is stored as `ignored` and answered 200. Phase 6 adds `transfer.processed`, `transfer.failed`, `settlement.processed` and the refund events. Payment state is always confirmed by a provider fetch, never taken from the body. A processing failure (database or provider trouble, or an amount that does not match) is recorded on the `webhookEvents` row as `failed` and still answered 200; it is recovered by a redelivery of the same event (the row is re-claimed atomically, D46) or by the reconcile job, which asks the provider directly.
+Phase 5 acts on `payment.captured`, `payment.failed` and `order.paid`. Every other event is stored as `ignored` and answered 200. Phase 6 acts on `refund.processed`, `refund.failed`, `transfer.processed` and `transfer.failed` (D59); `refund.created`, `refund.speed_changed` and `settlement.processed` are stored as `ignored`. Payment state is always confirmed by a provider fetch, never taken from the body. A processing failure (database or provider trouble, or an amount that does not match) is recorded on the `webhookEvents` row as `failed` and still answered 200; it is recovered by a redelivery of the same event (the row is re-claimed atomically, D46) or by the reconcile job, which asks the provider directly.
 
 ### POST /payments/mock/complete (development only, D55)
 
 Request `{ "orderId" }` (the customer's own pending order). Response 200: `{ razorpayOrderId, razorpayPaymentId, razorpaySignature }`, i.e. what Razorpay Checkout would hand the browser; send it to `POST /payments/verify`. 404 when the provider is not the MockLedger or `NODE_ENV` is `production`.
 
-### PATCH /vendor/sub-orders/:id/status
+### PATCH /vendor/sub-orders/:id/status (implemented, Phase 6, D58)
 
-Request: `{ "status": "shipped", "tracking": { "carrier": "DTDC", "trackingNumber": "D123456" } }`
-Response 200: updated sub-order. 409 `INVALID_STATE_TRANSITION` for e.g. `delivered → processing`.
+Request: `{ "status": "shipped", "tracking": { "carrier": "DTDC", "trackingNumber": "D123456" } }` (`tracking` is required for `shipped` and refused for any other status: 422). `{ "status": "delivered" }` and `{ "status": "cancelled" }` take no tracking.
+Response 200: the vendor's view of the updated sub-order (see below). 404 for another vendor's sub-order or one that was never paid; 403 `VENDOR_NOT_APPROVED` unless the shop is approved; 409 `INVALID_STATE_TRANSITION` for any move not in the table (including `status: "processing"` and a second identical request). `cancelled` also refunds the sub-order in full (reason `vendor_cancel`).
 
-### POST /admin/sub-orders/:id/refund
+**Vendor view of a sub-order** (`GET /vendor/sub-orders`, `GET /vendor/sub-orders/:id`; list is paginated, filter `fulfillmentStatus` = `processing|shipped|delivered|cancelled`): `{ id, subOrderNumber, orderNumber, items[{ productId, title, sku, unitPricePaise, quantity, lineNetPaise }], subtotalPaise, discountPaise, customerTotalPaise, commission{ rateBps, amountPaise }, vendorPayoutPaise, fulfillmentStatus, refundStatus, refundedPaise, tracking, shippingAddress, settlementStatus, deliveredAt, returnWindowEndsAt, createdAt }`. No customer id, email or account data; `pending_payment` and never-paid sub-orders are not listed.
 
-Request: `{ "amountPaise": 100000, "reason": "admin", "note": "Damaged item" }` →
-`{ "success": true, "data": { "refund": { "id": "...", "status": "initiated", "amountPaise": 100000, "commissionReversedPaise": 10000, "vendorDebitPaise": 90000 } } }`
+### POST /orders/:orderId/sub-orders/:subOrderId/cancel (implemented, Phase 6)
+
+Customer only, no body. Allowed only while the sub-order is `processing`; it is cancelled, the stock goes back once and the rest of the sub-order is refunded. Response 200: `{ "data": { "refundId": "..." | null, "order": <GET /orders/:id view> } }`. 404 for someone else's sub-order or a mismatched order id; 409 `INVALID_STATE_TRANSITION` once shipped or already cancelled. If the provider is unavailable the cancel still stands and the refund completes later (the sub-order shows `refundStatus: "pending"`).
+
+### POST /admin/sub-orders/:id/refund (implemented, Phase 6, D57)
+
+Request: `{ "amountPaise": 100000, "reason": "admin", "note": "Damaged item" }`. `amountPaise` is optional (omitted = everything still refundable), an integer of at least 1; `reason` must be `admin`; `note` 3-300 characters; unknown fields are 422. The `Idempotency-Key` header is optional.
+Response **201** (first call) or **200** (repeat of the same key):
+`{ "success": true, "data": { "refund": { "id": "...", "status": "processed", "amountPaise": 100000, "commissionReversedPaise": 10000, "vendorDebitPaise": 90000 }, "subOrder": { "id": "...", "fulfillmentStatus": "processing", "refundStatus": "partial", "refundedPaise": 100000 } } }`. `refund.status` is `initiated` when the provider has not confirmed yet (it completes by webhook or by the reconcile job).
+Errors: 404 unknown or never-paid sub-order; 409 `CONFLICT` with `details.reason` = `exceeds_refundable` (+ `refundablePaise`), `not_refundable` (cancelled or unpaid), `return_window_closed`, `idempotency_key_reused`; 422 `VALIDATION_ERROR` with `details.reason: "refund_below_minimum"` when the vendor's share is 1-99 paise (Razorpay reverses at least INR 1.00). A refund that takes an unshipped sub-order to zero also cancels it and puts the stock back.
+
+### Settlements and reconciliation (implemented, Phase 6, D59, D60)
+
+- `GET /vendor/settlements?status=&page=&limit=`: the vendor's own, newest first: `{ id, subOrderId, subOrderNumber, grossPaise, commissionPaise, refundAdjustmentPaise, netPayoutPaise, status, eligibleAt, releasedAt, settledAt, createdAt }`. Settlements of orders that were never paid are not listed. No provider ids.
+- `GET /admin/settlements?status=&vendorId=&page=&limit=`: the same plus `vendorId`, `providerTransferId`, `failureReason`.
+- `POST /admin/settlements/:settlementId/release` (no body): manual release, ignores the return window only. 200 `{ id, status: "released", releasedAt, netPayoutPaise }`; 409 `INVALID_STATE_TRANSITION` if not `pending_release`; 409 `CONFLICT` `details.reason` = `open_refund | nothing_to_release | payout_account_inactive | no_provider_transfer | changed_meanwhile`; 502 `PAYMENT_PROVIDER_ERROR` (the settlement stays `pending_release`); audited as `settlement.released`.
+- `POST /admin/reconciliation/run` (no body): 201 with the report; 409 `CONFLICT` `details.reason: "run_in_progress"`; audited as `reconciliation.run`. `GET /admin/reconciliation?page=&limit=`: reports, newest first. Report: `{ id, runAt, status: "ok"|"mismatch", trigger, totals, mismatches[] }`.
 
 ### POST /products/:productId/reviews
 

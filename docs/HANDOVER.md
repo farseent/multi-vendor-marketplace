@@ -1,86 +1,89 @@
 # HANDOVER.md
 
-## Current state (after Phase 5: Checkout, inventory, payments)
+## Current state (after Phase 6: Fulfilment, refunds, settlements)
 
-Phase 5 is implemented. Branch suggestion: `phase-5-checkout-payments`. No Phase 6+ code exists (no fulfilment transitions, customer cancel, admin refund, settlement release, invoices). Phases 1-4 behave as before.
+Phase 6 is implemented and verified with the mock provider. Branch suggestion: `phase-6-fulfilment-refunds-settlements`. Phases 1-5 behave as before except where listed under "Behaviour changes to earlier phases". No Phase 7+ code exists (no reviews, invoices, admin UI, analytics). The upload had no `.git` folder, so nothing was committed.
 
-- **Checkout:** `POST /checkout` (customer, `Idempotency-Key` required) re-reads prices, stock and the coupon inside one Mongo transaction, rejects before the first write (empty cart, unavailable, out of stock, coupon, total under 100 paise, vendor without payout account, payout under 100 paise, `exceeds_platform_margin`), then writes the order, one sub-order per vendor, settlements (`not_eligible`), the payment row, the coupon reservation and the stock decrement, and clears the cart. The provider order (with one **on-hold transfer per sub-order**) is created after the commit; on failure the order is expired again and the cart is restored.
-- **Confirmation:** `POST /payments/verify` (browser callback), `POST /webhooks/razorpay` and the reconcile job all end in one conditional `markOrderPaid`, so whichever arrives first wins. The signature is checked against the order id **stored** on the server. Payment state always comes from a provider fetch, never from a request body.
-- **Webhook:** raw body, HMAC verified over the raw bytes, deduplicated by the `x-razorpay-event-id` header with **atomic claiming** (a `failed` row or a `received` row older than 60 s is taken over by exactly one request). Always 200 for a correctly signed request.
-- **Jobs (lease-guarded, every 60 s):** reservation release (expires unpaid orders after 15 min, asking the provider first whether the customer paid) and reconcile (confirms paid orders older than 5 min, checks orders expired in the last hour for late captures, retries refunds the provider refused).
-- **Late capture:** an expired order that gets paid re-reserves its stock, or if the stock is gone is refunded in full (one order-level `Refund`, provider call claimed atomically).
-- **Providers:** `PaymentProvider` contract; `MockLedgerProvider` (in-process, enforces Razorpay's documented limits) and a Razorpay Route adapter (plain `fetch`, no SDK). `PAYMENT_PROVIDER=mock` is refused in production.
-- **Payout accounts:** vendors are paid only with an attached linked account. Create it in the Razorpay Dashboard and attach it with `npm run link-account -- --vendor <id|slug> --account <acc_id> --admin <email> [--replace]` (validated, audited). `POST/GET /vendor/payout-account` are **deferred**. The mock derives `acc_mock<vendorId>` automatically.
-- **Client:** `/checkout` (address choice or a small add-address form, summary, place order), `/orders`, `/orders/:orderId` (status, countdown, live refresh, payment panel: Razorpay Checkout or, with the mock, a "Simulate payment" button), "Proceed to checkout" on the cart, "Orders" in the header.
+- **Fulfilment:** the vendor moves a paid sub-order `processing → shipped → delivered` (`PATCH /vendor/sub-orders/:id/status`; `shipped` needs `tracking`). One transition table (`SUB_ORDER_TRANSITIONS`) serves every route; anything else is 409 `INVALID_STATE_TRANSITION`. Every move is a single conditional update, so double clicks and racing actors change the sub-order once. A vendor must be `approved` to change a status. Vendors see only paid sub-orders, with the shipping address and no other customer data.
+- **Cancel:** the customer (`POST /orders/:orderId/sub-orders/:subOrderId/cancel`) or the vendor (`status: cancelled`) cancels a `processing` sub-order: stock returns once (`stockRestored`), everything not yet refunded is refunded, the settlement becomes `reversed`, all in one transaction. If the provider is down the cancel stands and the refund finishes later.
+- **Refunds:** `POST /admin/sub-orders/:id/refund` (full or partial, delivered ones only inside the 7-day window). `subOrders.refundedPaise` is reserved atomically (the cap can never be exceeded, even concurrently), the refund is split per D9 (commission reversed proportionally, remainder on the final refund), then the provider is called: **vendor transfer reversal first, customer refund second**, each step stored on the row so a retry never repeats a finished step. A refund the provider has not accepted stays `initiated` and the reconcile job retries it after 5 minutes. A full refund of an unshipped sub-order also cancels it.
+- **Settlements:** `not_eligible → pending_release` only on `delivered` (`eligibleAt = returnWindowEndsAt`); `→ reversed` when fully refunded before payout; hourly release job (`settlementRelease`): window elapsed, no open refund, net > 0, active payout account → `released` and `PATCH /v1/transfers/:id {on_hold:false}`; `released → settled | failed` by asking the provider (sweep + `transfer.processed` / `transfer.failed` webhooks; bodies are never trusted). Manual `POST /admin/settlements/:id/release` skips only the window.
+- **Webhooks added:** `refund.processed`, `refund.failed`, `transfer.processed`, `transfer.failed` (each confirmed by a provider fetch). `refund.created`, `refund.speed_changed`, `settlement.processed` are stored `ignored`.
+- **Reconciliation:** `reconciliationReports`; `POST /admin/reconciliation/run` (409 while another run holds the lease) and a daily job (hourly wake, runs when the newest report is over 23 h old). Compares each paid settlement with its provider transfer (amount, remaining after reversals, hold, settled, failed) and lists stuck or failed refunds. Report only; it never changes data.
+- **Client:** `/vendor/orders` (filter, ship with tracking, deliver, cancel), `/vendor/settlements` (payout table), and on `/orders/:orderId` tracking, refund line and "Cancel this part of the order". No admin UI (Phase 8).
 
 ## Key decisions (DECISIONS.md)
 
-D44-D51 **Accepted** (V1-V3 research, holds, webhooks, transfer limits, verify rules, payout accounts, 100-paise minimums, `PLATFORM_COMMISSION_BPS`). **D52-D56 are Proposed and need your review:** D52 commission rate for multi-category sub-orders; D53 checkout details (coupon omitted/null, 201 vs 200, cart restore, order-number gaps); D54 late capture and refunds as built; D55 dev-only mock payment endpoint; D56 schema and naming differences. The source register at the end of that section lists every Razorpay page used, and assumptions A1-A10.
+**D57-D60 are Proposed and need your review:** D57 refund engine, D58 fulfilment rules, D59 settlements, D60 reconciliation. **Five open questions need your answer before merge** (listed at the end of D60): (1) a platform-funded coupon lets the vendor keep the platform's discount after a full refund (D9 applied literally; a one-line fix is described); (2) a paid order's coupon is not given back on cancel; (3) suspended vendors cannot fulfil existing orders; (4) the last 1-99 paise of a sub-order cannot be refunded (Razorpay reverses at least INR 1.00); (5) an order whose sub-orders are all cancelled becomes `cancelled`, not `completed`.
+Research closed this phase: **A7** (refund event names are official) and half of **A6** (the transfer reversal API). **Still open: whether a transfer that is still ON HOLD can be reversed**; no page I read says so. See "Not verified".
 
 ## Relevant files
 
-New (server): `src/lib/commission.js`, `src/lib/modelJson.js`; `src/providers/payment/` (`PaymentProvider.js`, `signatures.js`, `mockLedger.js`, `razorpay.js`, `index.js`); `src/modules/orders/` (`orders.model`, `orders.money`, `orders.lifecycle`, `checkout.service`, `orders.service`, `.validator`, `.controller`, `.routes`); `src/modules/payments/` (`payments.model`, `payments.service`, `webhooks.service`, `.validator`, `.controller`, `.routes`); `src/modules/settlements/settlements.model.js`; `src/modules/refunds/refunds.model.js`; `src/jobs/` (`leasedJob`, `reservationRelease`, `reconcilePending`); `src/scripts/linkAccount.js`; tests `phase5a.unit`, `checkout`, `payments`, `jobs`, `linkAccount`, `razorpay.provider` and `phase5.helpers.js`.
-New (client): `src/lib/checkout.js` (+ test), `src/pages/CheckoutPage.jsx`, `OrdersPage.jsx`, `OrderPage.jsx`, `orders.css`.
-Changed: `server/src/app.js` (provider, services, raw-body webhook router mounted before the JSON parser), `src/server.js` (provider, index creation, jobs), `src/config/constants.js`, `src/config/env.js`, `src/middleware/rateLimit.js` (checkout limiter), `src/modules/audit/audit.service.js` (optional transaction `session`), `server/package.json` and root `package.json` (`link-account`), `.env.example`, `tests/helpers.js`, `tests/db.js`, `tests/rbac.test.js`; client `App.jsx`, `Layout.jsx`, `CartPage.jsx`, `cart.css`. No new dependencies.
+New (server): `src/lib/refunds.js` (pure refund maths); `src/modules/orders/` `orders.transitions.js`, `fulfillment.{service,controller,routes,validator}.js`; `src/modules/refunds/` `refunds.service.js`, `refunds.{controller,routes,validator}.js`; `src/modules/settlements/` `settlements.{service,controller,routes,validator,states,ledger}.js`, `reconciliation.{model,service}.js`; `src/jobs/settlementRelease.js`, `src/jobs/reconciliation.js`.
+New tests: `fulfillment`, `refunds`, `settlements`, `reconciliation`, `phase6.unit` (property tests), `phase6.helpers.js`.
+New (client): `src/lib/fulfillment.js` (+ test), `src/pages/VendorOrdersPage.jsx`, `VendorSettlementsPage.jsx`.
+Changed: `src/app.js` (wiring; `app.get('phase6Services')` exposes the services to tests), `src/server.js` (index for the new model, two jobs), `src/config/constants.js`, `src/jobs/reconcilePending.js` (also retries and follows sub-order refunds), `src/modules/payments/{webhooks,payments}.service.js`, `src/modules/refunds/refunds.model.js`, `src/providers/payment/{PaymentProvider,mockLedger,razorpay}.js`, `tests/db.js`, `tests/razorpay.provider.test.js`; client `App.jsx`, `Layout.jsx`, `OrderPage.jsx`, `orders.css`. Docs: DECISIONS, API_CONTRACTS, DATABASE_SCHEMA, ARCHITECTURE (one sentence), TESTING, IMPLEMENTATION_PLAN, this file.
+
+## Behaviour changes to earlier phases
+
+- `subOrders.refundedPaise` now means refunds in `initiated` or `processed` (reserved at creation), not only processed ones.
+- The Phase 5 late-capture refund now also marks the order's settlements `reversed` (net 0), because `reverse_all` takes every transfer back.
+- `PaymentProvider` has four new methods (`releaseTransfer`, `reverseTransfer`, `fetchTransfer`, `fetchRefund`); the reconcile job takes an optional `refundsService`.
+- The mock's `refundPayment` with `reverseAll` now reverses the order's transfers, and refunds can be made to start `pending` (`setNextRefundStatus`).
 
 ## API changes
 
-New: `POST /checkout` (201 first call, 200 replay), `GET /orders`, `GET /orders/:orderId`, `POST /payments/verify`, `POST /webhooks/razorpay` (outside `/api/v1` auth and rate limits; the signature authenticates), `POST /payments/mock/complete` (dev only, 404 otherwise). Shapes, errors and reasons are in API_CONTRACTS.md. `POST/GET /vendor/payout-account` are marked deferred.
+New: `GET /vendor/sub-orders`, `GET /vendor/sub-orders/:id`, `PATCH /vendor/sub-orders/:id/status`, `POST /orders/:orderId/sub-orders/:subOrderId/cancel`, `POST /admin/sub-orders/:id/refund`, `GET /vendor/settlements`, `GET /admin/settlements`, `POST /admin/settlements/:id/release`, `GET /admin/reconciliation`, `POST /admin/reconciliation/run`. Shapes and error reasons: API_CONTRACTS ("implemented, Phase 6"). New 409 `details.reason` values: `exceeds_refundable`, `not_refundable`, `return_window_closed`, `idempotency_key_reused`, `run_in_progress`, `open_refund`, `nothing_to_release`, `payout_account_inactive`, `no_provider_transfer`, `changed_meanwhile`; new 422 reason `refund_below_minimum`. Audit actions: `refund.created`, `settlement.released`, `reconciliation.run`.
 
 ## Schema changes
 
-New collections `orders`, `subOrders`, `payments`, `settlements`, `refunds`, `counters`, `webhookEvents` (see DATABASE_SCHEMA.md, already updated). Differences from the earlier schema: `payments.provider` allows `mock` and `providerOrderId` is unique-sparse; `webhookEvents.claimedAt`; `refunds.subOrderId`/`requestedBy` optional and `providerCallAt`; audit action `vendor.payout_account_attached`. `couponRedemptions` is now written (reserved, redeemed, released) and `usedCount` is maintained.
+`refunds.reason` adds `vendor_cancel`; `refunds.providerReversalId` (new, optional); new collection `reconciliationReports` (index `{runAt:-1}`); meaning of `subOrders.refundedPaise` (above). No other collection changed. DATABASE_SCHEMA.md is updated.
 
 ## Environment variables
 
-New: `PAYMENT_PROVIDER` (`mock` default / `razorpay`; mock refused when `NODE_ENV=production`), `PLATFORM_COMMISSION_BPS` (integer 0-5000, default 1000, empty means unset), `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` (required only for `razorpay`). `.env.example` is updated.
+None new. Two job intervals are constants in `config/constants.js` (`SETTLEMENT_JOB`, `RECONCILIATION_JOB`).
 
 ## Commands
 
 ```
 npm install
 npm run lint && npx prettier --check .
-npm test -w server          # needs a MongoDB replica-set binary (see Verification)
+npm test -w server          # needs a MongoDB replica-set binary (MONGOMS_SYSTEM_BINARY=/path/to/mongod)
 npm test -w client && npm run build -w client
-npm run link-account -w server -- --vendor <id|slug> --account <acc_id> --admin <email>
 ```
 
-## Verification (what was actually run, 2026-11-01)
+## Verification (what was actually run, 2026-11-03)
 
-Environment: Node 22, **real MongoDB 8.3.7** (single-node replica set from a system binary via `MONGOMS_SYSTEM_BINARY`). No Razorpay, Redis or Elasticsearch was used by the tests.
+Environment: Node 22, **real MongoDB 8.3.7** (single-node replica set from a conda-forge `mongod` via `MONGOMS_SYSTEM_BINARY`). No Razorpay, Redis or Elasticsearch.
 
-- Server: **563 tests pass** (409 existing + 154 new). Client: **71 tests pass** (55 + 16); `vite build` OK. ESLint clean on the whole repo. Prettier clean on code (see the note on docs below).
-- New acceptance checks all pass as automated tests (the list with test names is in IMPLEMENTATION_PLAN Phase 5): 50 concurrent checkouts on stock 10 give 10 orders and 40 `OUT_OF_STOCK` with stock 0; the same key sent 5 times at once gives 1 order and 1 provider order; 1,000-run property tests for commission and totals; tampered signature/amount give 400 with the order unchanged; one webhook delivered 3 times and concurrently with verify changes the order once; 20 concurrent claims of a `failed` or stale `received` event run the handler once; expiry restores stock and coupon exactly once (also under 5 racing calls); late capture re-reserves or refunds exactly once.
-- **Also run once on a real booted server** (`node src/server.js`, replica set, mock provider, Redis and ES deliberately down): register customer, two vendors and an admin; vendor-funded coupon; 2-vendor checkout (total 280,000 paise); replay; tampered verify (400) then good verify (placed); signed webhook, duplicate and bad-signature webhook through the real raw-body route; the real reservation job expired a backdated unpaid order and restored the stock (1 to 4); the `link-account` CLI attached, no-op'd, and rejected a wrong account and a non-admin; production boot with the mock exited with an error.
+- Server: **813 tests pass** (563 existing + 250 new, 30 files). Client: **86 pass** (71 + 15); `vite build` OK. ESLint clean; Prettier clean on the whole repo.
+- All six Phase 6 acceptance checks are automated tests (names in IMPLEMENTATION_PLAN): 25-pair transition table; refund property tests (1,000 runs, vendor- and platform-funded) and the same through the API; cap 409 including 5 concurrent refunds (exactly 2 of 5 fit); cancel restocks once (double call, and 3 concurrent cancels); settlement and release-job rules; reconciliation reporting exactly the one tampered transfer.
+- **Also run once on a real booted server** (`node src/server.js`, replica set, mock provider, Redis and ES deliberately down): paid order of 300,000 paise → admin partial refund 50,000 (5,000 commission reversed, 45,000 debited) → ship → cancel after ship refused (409) → deliver → vendor settlement shows `pending_release`, net 225,000 → manual release → reconciliation `ok` with provider remaining 225,000 → over-refund refused (409).
 
-**Not verified:**
+**Not verified (do not assume these work):**
 
-1. **A payment with real Razorpay (test mode).** Needs your account: Route enabled, a linked account, auto-capture, a webhook URL Razorpay accepts (not localhost or a blocklisted tunnel), then DECISIONS assumptions A4, A8, A9, A10. The Razorpay adapter is tested against a stubbed `fetch` built from the documentation only.
-2. A real-browser pass of the new pages, and Razorpay's widget opening. The components are only compiled and linted; there are no component tests.
-3. Behaviour with a real Redis (cache invalidation after stock changes is exercised with no Redis) or Elasticsearch.
-4. The outstanding Phase 3 checks that need your Docker stack (see the previous handover) remain open.
-5. Prettier on docs: `docs/*.md` were reformatted by Prettier only where Claude edited them; re-run `npx prettier --check .` after pasting.
+1. **Anything against real Razorpay.** The adapter's new calls are tested only against stubbed responses built from the documentation (S20-S22). Run TESTING section 4 with the additions there.
+2. **Refunding before release (A6).** Whether a reversal of a transfer still on hold is accepted, and what balance it draws on, is undocumented in the pages I read. If Razorpay refuses it, a refund before release stays `initiated` forever and shows in the reconciliation report. This decides whether the design needs another approach (for example releasing the hold first).
+3. **The transfer webhook body path** `payload.transfer.entity.id` (A11) and that `amount_reversed` is returned (A13).
+4. A real-browser pass of the three changed pages (no component tests exist; compiled, linted and the helpers unit-tested only).
+5. Real Redis and Elasticsearch behaviour after stock is restored by a cancel (cache invalidation and the search outbox run, but only with both services down).
 
 ## Known issues
 
-- **Operational prerequisite:** with `PAYMENT_PROVIDER=razorpay`, a vendor without an attached, active linked account cannot be bought from (409 `vendor_payout_unavailable`). Attach accounts with `link-account` first.
-- `exceeds_platform_margin` is checked only at checkout, so a platform coupon can look valid in the cart and be refused at checkout (D47b, by design).
-- Whether Route is **activated** for a linked account is not checked (it needs a product id we do not store); a non-activated account appears as a 502 when an order is created (D49).
-- The 100-paise minimum per transfer inside an order is assumed from the transfers-from-payments page (A1); the "no transfer above the order amount" rule is read on a non-India page only (A2).
-- A failed webhook is answered 200 and recorded `failed`; Razorpay will not retry it. It is recovered by a manual replay (same event id, atomic re-claim) or by the reconcile job, which asks the provider directly. Reconcile looks at an expired order for one hour only.
-- If the process dies after the provider accepts a late-capture refund but before the database is updated, the retry asks Razorpay again; Razorpay should refuse a second full refund, but that was not tested (A10).
-- `payment.failed` is stored on the payment but never sets `orders.paymentStatus = failed` (the customer may retry on the same provider order).
-- MockLedger is in memory: a mock-paid order cannot be confirmed after a server restart (development only).
-- Order numbers can have gaps (the counter is taken before the transaction).
-- There are no customer cancel, refund, invoice or fulfilment endpoints yet (Phases 6-7); `docs` list them.
-- No address management UI other than the add-address form at checkout.
-- Carried over: `POST /cart/coupon` has only the global rate limit; no cleanup of abandoned carts; no vendor/admin coupon UI; Phase 3 items (category changes not propagated to the index, reindex runs inside the HTTP request, `inStock` in search up to about 60 s stale, Mongo fallback loads all approved shops); API_CONTRACTS says a `rejected` vendor is terminal while the code allows `rejected -> approved`; two Phase 2 acceptance boxes (presign constraints; negative stock / non-integer price) are still unticked.
+- **Refund steps are not atomic at the provider.** Razorpay has no idempotency key for a reversal. If the process dies after the provider accepts a reversal but before `providerReversalId` is saved, the retry reverses again (the vendor is debited twice). The window is tiny and the reconciliation report would show `transfer_remaining_mismatch`, but nothing repairs it. Same shape as A10 for refunds.
+- **A refund Razorpay finally refuses** (`failed`) is not unwound: the vendor may already have been reversed and the customer not refunded. It is logged (`refund.failed_needs_manual_action`) and reported, and there is no admin retry or cancel endpoint yet.
+- A `failed` settlement is final; there is no retry path. A crash between flipping a settlement to `released` and the provider call leaves it `released` while still on hold (reported as `hold_not_released`).
+- D57 5: refunds whose vendor share is 1-99 paise are refused (open question 4). D57 and open question 1: platform-funded coupon leak.
+- A paid order's coupon is never released on cancel (open question 2). Product `soldCount` is not maintained (no code does, before or after this phase).
+- Reconciliation fetches transfers one by one (at most 1,000 per run), so it is slow for a large marketplace; it needs batching or a provider list call in Phase 9.
+- `settlement.processed` is acknowledged and ignored (A12); `settled` comes from the hourly sweep or `transfer.processed`, so it can lag by up to an hour when no webhook arrives.
+- Vendor orders page shows the first 50 only (no paging control). No admin UI for refunds, settlements or reports (Phase 8); they are API-only.
+- Carried over from Phase 5: operational prerequisite of linked accounts (D49); A1, A2, A4, A5, A8-A10 unchecked; `payment.failed` does not set `paymentStatus`; MockLedger is in memory; order numbers can have gaps; no address management UI; Phase 3 items.
 
-## Next-phase prerequisites (Phase 6: Fulfilment, refunds, settlements)
+## Next-phase prerequisites (Phase 7: Reviews and invoices)
 
-- Review and approve Phase 5 (including D52-D56), then create the branch.
-- Read before designing refunds: the Razorpay **transfer reversal API** and whether an **on-hold** transfer can be reversed (A6), and the **official refund webhook** names (A7). A partial refund of a multi-vendor payment cannot use `reverse_all` (D45).
-- The settlement release job needs `PATCH /v1/transfers/:id` with `on_hold: false` (D45, S2); `PaymentProvider` has no `releaseTransfer` yet. `settlements.providerTransferId` is already stored at checkout.
-- Sub-orders are `processing` once paid and `cancelled` when their order expires; Phase 6 adds `shipped`, `delivered`, customer cancel (stock restored once via `stockRestored`, reuse `orders.lifecycle.restoreStock`) and the settlement states.
-- Webhook events for transfers, settlements and refunds must be added to the handler (they are stored as `ignored` today).
-- Do the manual test-mode run (TESTING section 4) before relying on any Razorpay behaviour documented here as an assumption.
+- Review and approve Phase 6 (D57-D60), answer the five open questions, then create the branch.
+- Do the manual test-mode run, **especially a refund while the transfer is on hold**, before relying on refunds against real Razorpay; record it in `docs/PAYMENT_TEST_LOG.md`.
+- Reviews need `delivered` sub-orders: `fulfillmentStatus: delivered` and the product in `items` (a refunded delivered sub-order still counts unless you decide otherwise).
+- Invoices need paid orders only; the order's `refundStatus` and each sub-order's `refundedPaise` are now maintained, so an invoice can show refunds.
+- Phase 8's "every admin mutation is audited" route-table test: this phase audits refund, manual settlement release and reconciliation run; vendor and admin mutations from earlier phases are unchanged.

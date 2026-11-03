@@ -139,3 +139,52 @@ export const RECONCILE_JOB = {
   batchSize: 50,
   minAgeMs: 5 * 60_000, // ARCHITECTURE 3.1: pending_payment orders older than 5 min
 };
+
+// Fulfilment, refunds, settlements (Phase 6)
+export const RETURN_WINDOW_DAYS = 7; // D10: a delivered sub-order is refundable and unpaid for this long
+// from -> to -> who may make that move. Anything not listed is 409 INVALID_STATE_TRANSITION
+// (API_CONTRACTS section 3). `system` moves are made by payment confirmation, never by an API caller.
+export const SUB_ORDER_TRANSITIONS = {
+  pending_payment: { processing: ['system'] },
+  processing: { shipped: ['vendor'], cancelled: ['vendor', 'customer'] },
+  shipped: { delivered: ['vendor'] },
+  delivered: {},
+  cancelled: {},
+};
+export const REFUND_REASONS = ['customer_cancel', 'vendor_cancel', 'admin', 'failed_late_capture'];
+export const MIN_REVERSAL_PAISE = 100; // Razorpay: a transfer reversal is at least INR 1.00 (D57)
+export const REFUND_CLAIM_MS = 60_000; // one caller at a time may ask the provider (D54)
+export const REFUND_RETRY_AFTER_MS = 5 * 60_000; // the reconcile job retries a refund after this long
+export const SETTLEMENT_STATUSES = [
+  'not_eligible',
+  'pending_release',
+  'released',
+  'settled',
+  'reversed',
+  'failed',
+];
+// Settlement state machine (ARCHITECTURE 3.5): from -> allowed targets.
+export const SETTLEMENT_TRANSITIONS = {
+  not_eligible: ['pending_release', 'reversed'],
+  pending_release: ['released', 'reversed', 'failed'],
+  released: ['settled', 'failed'],
+  settled: [],
+  reversed: [],
+  failed: [],
+};
+export const SETTLEMENT_JOB = {
+  jobName: 'settlementRelease',
+  intervalMs: 60 * 60_000, // hourly (ARCHITECTURE 3.5)
+  leaseMs: 10 * 60_000,
+  batchSize: 50,
+  settleCheckAfterMs: 60 * 60_000, // released settlements are looked at after this long
+};
+export const RECONCILIATION_JOB = {
+  jobName: 'reconciliation',
+  intervalMs: 60 * 60_000, // wakes hourly, runs when the last report is older than minGapMs
+  minGapMs: 23 * 60 * 60_000, // so a restart does not skip a day, and does not repeat one
+  leaseMs: 30 * 60_000,
+  maxSettlements: 1000, // checked per run; the report says when it was cut short
+  maxStoredMismatches: 200,
+  stuckRefundAfterMs: 60 * 60_000,
+};

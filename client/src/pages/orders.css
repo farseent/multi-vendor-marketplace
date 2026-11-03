@@ -44,3 +44,47 @@
 .sub-order {
   margin: 1.5rem 0;
 }
+
+/* Phase 6: fulfilment and payouts */
+.sub-order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+.ship-form {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 24rem;
+  margin: 0.75rem 0;
+}
+.ship-form label {
+  display: grid;
+  gap: 0.25rem;
+}
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.filter-row button[aria-pressed='true'] {
+  font-weight: 700;
+  text-decoration: underline;
+}
+button.danger {
+  color: #b00020;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+table.settlements {
+  border-collapse: collapse;
+  width: 100%;
+}
+table.settlements th,
+table.settlements td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid #ddd;
+}

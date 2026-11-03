@@ -16,6 +16,17 @@ import { AppError } from '../../lib/AppError.js';
  *   verifyWebhookSignature(rawBody: Buffer, signature) -> boolean                           (D46)
  *   refundPayment({ providerPaymentId, amountPaise, reverseAll, receipt })
  *       -> { providerRefundId, status: 'initiated' | 'processed' }
+ *   releaseTransfer(providerTransferId) -> { providerTransferId }                          (D45, D57)
+ *       takes the hold off a transfer, so the money reaches the linked account
+ *   reverseTransfer({ providerTransferId, amountPaise, notes }) -> { providerReversalId }  (D57)
+ *       takes `amountPaise` back from the linked account (at least 100 paise); partial and repeated
+ *       reversals of one transfer are allowed
+ *   fetchTransfer(providerTransferId)
+ *       -> { id, amountPaise, amountReversedPaise, status, onHold, settlementStatus }
+ *       status: created|pending|processed|failed|reversed|partially_reversed
+ *       settlementStatus: pending|on_hold|settled
+ *   fetchRefund({ providerPaymentId, providerRefundId }) -> { id, paymentId, amountPaise, status }
+ *       status: pending|processed|failed
  *   resolvePayoutAccount(vendor) -> { linkedAccountId, active }                             (D49)
  *   validateLinkedAccount({ vendor, linkedAccountId }) -> { ok: boolean, reason?: string }  (D49)
  *
@@ -28,6 +39,10 @@ export const PAYMENT_PROVIDER_METHODS = [
   'fetchOrderPayments',
   'verifyWebhookSignature',
   'refundPayment',
+  'releaseTransfer',
+  'reverseTransfer',
+  'fetchTransfer',
+  'fetchRefund',
   'resolvePayoutAccount',
   'validateLinkedAccount',
 ];

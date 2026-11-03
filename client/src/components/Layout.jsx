@@ -45,6 +45,8 @@ export default function Layout() {
             <>
               <NavLink to="/vendor/shop">My shop</NavLink>
               <NavLink to="/vendor/products">My products</NavLink>
+              <NavLink to="/vendor/orders">Orders</NavLink>
+              <NavLink to="/vendor/settlements">Payouts</NavLink>
             </>
           )}
           {status === 'authenticated' ? (

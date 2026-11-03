@@ -13,8 +13,10 @@ import ProductPage from './pages/ProductPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
 import SearchPage from './pages/SearchPage.jsx';
 import StatusPage from './pages/StatusPage.jsx';
+import VendorOrdersPage from './pages/VendorOrdersPage.jsx';
 import VendorProductFormPage from './pages/VendorProductFormPage.jsx';
 import VendorProductsPage from './pages/VendorProductsPage.jsx';
+import VendorSettlementsPage from './pages/VendorSettlementsPage.jsx';
 import VendorShopPage from './pages/VendorShopPage.jsx';
 
 export default function App() {
@@ -44,6 +46,8 @@ export default function App() {
           <Route path="vendor/products" element={<VendorProductsPage />} />
           <Route path="vendor/products/new" element={<VendorProductFormPage />} />
           <Route path="vendor/products/:productId" element={<VendorProductFormPage />} />
+          <Route path="vendor/orders" element={<VendorOrdersPage />} />
+          <Route path="vendor/settlements" element={<VendorSettlementsPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>

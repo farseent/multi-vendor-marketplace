@@ -5,6 +5,7 @@ import { CouponRedemption } from '../coupons/redemptions.model.js';
 import { Product } from '../catalog/products.model.js';
 import { Order, SubOrder } from '../orders/orders.model.js';
 import { Refund } from '../refunds/refunds.model.js';
+import { reverseOrderSettlements } from '../settlements/settlements.ledger.js';
 import { Payment } from './payments.model.js';
 
 const inTransaction = (work) => mongoose.connection.transaction(work);
@@ -214,6 +215,8 @@ export function createPaymentsService({
         { _id: refund.orderId, status: 'expired' },
         { $set: { paymentStatus: 'paid', refundStatus: 'full' } },
       );
+      // reverse_all took every vendor transfer back: the order's settlements end here (Phase 6).
+      await reverseOrderSettlements(refund.orderId);
       logger.info(
         { orderId: String(refund.orderId), refundId: refund.id },
         'order.late_capture_refunded',

@@ -104,7 +104,7 @@ Indexes: `{orderNumber:1}` unique; `{customerId:1,createdAt:-1}`; `{customerId:1
 | vendorPayoutPaise | Number | payout before refund adjustments |
 | fulfillmentStatus | String | `pending_payment                                                                                                | processing | shipped                                       | delivered | cancelled` |
 | refundStatus | String | `none                                                                                                           | pending    | partial                                       | full      | failed` |
-| refundedPaise | Number | cumulative processed refunds |
+| refundedPaise | Number | sum of refunds in `initiated` or `processed`, reserved when the refund is created (D57) |
 | stockRestored | Boolean | guard against double restock |
 | tracking | embedded | `{ carrier?, trackingNumber? }` |
 | statusHistory[] | `{ status, at, byUserId, note? }` | append-only |
@@ -120,7 +120,7 @@ Indexes: `{providerOrderId:1}` unique; `{providerPaymentId:1}` unique sparse; `{
 
 ## refunds
 
-`paymentId`, `orderId`, `subOrderId?` (absent for an order-level `failed_late_capture` refund), `amountPaise`, `commissionReversedPaise`, `vendorDebitPaise`, `reason` (enum `customer_cancel|admin|failed_late_capture`), `note?`, `status: initiated|processed|failed`, `providerRefundId` (unique sparse), `providerCallAt?` (atomic claim of the provider call, 60 s), `requestedBy?` (absent when the system refunds), `idempotencyKey` (unique).
+`paymentId`, `orderId`, `subOrderId?` (absent for an order-level `failed_late_capture` refund), `amountPaise`, `commissionReversedPaise`, `vendorDebitPaise`, `reason` (enum `customer_cancel|vendor_cancel|admin|failed_late_capture`), `note?`, `status: initiated|processed|failed`, `providerRefundId` (unique sparse), `providerReversalId?` (the vendor transfer reversal made for this refund, kept so a retry never repeats it, D57), `providerCallAt?` (atomic claim of the provider call, 60 s), `requestedBy?` (absent when the system refunds), `idempotencyKey` (unique).
 Indexes: `{subOrderId:1}`; `{providerRefundId:1}` unique sparse; `{idempotencyKey:1}` unique.
 Rule: `sum(refunds.amountPaise where status in initiated|processed) <= subOrder.customerTotalPaise`.
 
@@ -128,7 +128,7 @@ Rule: `sum(refunds.amountPaise where status in initiated|processed) <= subOrder.
 
 `subOrderId` (unique), `orderId`, `vendorId`, `grossPaise` (vendor base before commission), `commissionPaise`, `refundAdjustmentPaise`, `netPayoutPaise`, `status: not_eligible|pending_release|released|settled|reversed|failed`, `providerTransferId?`, `eligibleAt?`, `releasedAt?`, `settledAt?`, `failureReason?`.
 Indexes: `{subOrderId:1}` unique; `{vendorId:1,status:1,createdAt:-1}`; `{status:1,eligibleAt:1}`.
-Rule: `netPayoutPaise = grossPaise - commissionPaise - refundAdjustmentPaise`, floor 0.
+Rule: `netPayoutPaise = grossPaise - commissionPaise - refundAdjustmentPaise`, floor 0. `refundAdjustmentPaise` is the sum of the vendor debits of the sub-order's refunds. Transitions (D59): `not_eligible` -> `pending_release` | `reversed`; `pending_release` -> `released` | `reversed` | `failed`; `released` -> `settled` | `failed`; `settled`, `reversed`, `failed` are final.
 
 ## coupons
 
@@ -165,7 +165,7 @@ Indexes: `{code:1}` unique; `{vendorId:1}`.
 - `searchOutbox`: `productId, op:'upsert|delete', attempts, nextAttemptAt, lastError?, createdAt`; indexes `{nextAttemptAt:1}` and `{productId:1}`.
   `op` is advisory; the sync job determines whether to index or delete using the current product and vendor state.
 - `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; written by admin mutations for `vendor.status_changed`, `vendor.commission_changed`, `category.created`, `category.updated`, and `search.reindexed`, `coupon.created`, `coupon.updated`, and `vendor.payout_account_attached` (written by the `link-account` admin script, `meta { previousLinkedAccountId, linkedAccountId }`); index `{entityType:1,entityId:1,createdAt:-1}`.
-- `reconciliationReports`: `runAt, totals{...}, mismatches[], status`.
+- `reconciliationReports`: `runAt`, `status` (`ok|mismatch`), `trigger` (`job|admin`), `triggeredBy?`, `totals{settlementsChecked, skippedOpenRefund, localNetPayoutPaise, providerRemainingPaise, mismatchCount, truncated}`, `mismatches[]` (`type, entityType, settlementId?, refundId?, subOrderId?, providerTransferId?, expected?, actual?, detail?`; at most 200 stored). Index `{runAt:-1}`. Types: see D60.
 - `jobLocks`: `{ _id: jobName, lockedUntil, owner }`.
 
 ## Relationship summary

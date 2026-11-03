@@ -4,6 +4,9 @@ import { parseEnv } from './config/env.js';
 import { connectMongo, disconnectMongo, pingMongo } from './lib/db.js';
 import { createEsClient, pingEs } from './lib/es.js';
 import { createJobLocks, JobLock } from './jobs/jobLock.js';
+import { createReconciliationJob } from './jobs/reconciliation.js';
+import { createSettlementReleaseJob } from './jobs/settlementRelease.js';
+import { ReconciliationReport } from './modules/settlements/reconciliation.model.js';
 import { createReconcilePendingJob } from './jobs/reconcilePending.js';
 import { createReservationReleaseJob } from './jobs/reservationRelease.js';
 import { createSearchSyncJob } from './jobs/searchSync.js';
@@ -75,6 +78,7 @@ async function main() {
     WebhookEvent.init(),
     Settlement.init(),
     Refund.init(),
+    ReconciliationReport.init(),
   ]);
 
   // Elasticsearch is optional at boot (D12): if it is down, search uses the Mongo fallback and
@@ -116,10 +120,19 @@ async function main() {
 
   // Phase 5 jobs share the HTTP handlers' service instances and are lease-guarded (D17).
   const paymentServices = app.get('paymentServices');
+  const { refundsService, settlementsService, reconciliationService } = app.get('phase6Services');
   const jobs = [
     searchSync,
     createReservationReleaseJob({ ...paymentServices, jobLocks: createJobLocks(), logger }),
-    createReconcilePendingJob({ ...paymentServices, jobLocks: createJobLocks(), logger }),
+    createReconcilePendingJob({
+      ...paymentServices,
+      refundsService,
+      jobLocks: createJobLocks(),
+      logger,
+    }),
+    // Phase 6: hourly settlement release and the daily reconciliation (lease-guarded, D17).
+    createSettlementReleaseJob({ settlementsService, jobLocks: createJobLocks(), logger }),
+    createReconciliationJob({ reconciliationService, jobLocks: createJobLocks(), logger }),
   ];
   jobs.slice(1).forEach((job) => job.start());
 

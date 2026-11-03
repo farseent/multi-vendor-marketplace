@@ -51,17 +51,17 @@ Generated from the registered route table: for each route × role (anonymous, cu
 - [x] Idempotency-Key replay returns same order
 - [x] Multi-vendor order produces correct sub-orders, totals, commission (property tests pass)
 - [x] Bad signature / amount mismatch rejected; order unchanged
-- [ ] Webhook duplicate/concurrent/out-of-order (refund before captured) safe _(payment events verified in Phase 5, including 20-way concurrent claims; refund events and "refund before captured" wait for Phase 6)_
+- [x] Webhook duplicate/concurrent/out-of-order (refund before captured) safe _(payment events: Phase 5, 20-way concurrent claims; refund and transfer events: Phase 6, duplicates, unknown ids and bodies that disagree with the provider are all harmless; "refund before captured" cannot happen because a refund is only ever created for a captured payment)_
 - [x] Reservation expiry restores stock and coupon once
 - [x] Late capture after expiry handled (re-reserve or auto-refund)
 
 ### Fulfillment, refunds, settlement
 
-- [ ] Transition table enforced
-- [ ] Partial/full refunds reconcile commission to the paisa; cannot exceed paid amount
-- [ ] Cancel-before-ship restores stock once
-- [ ] Settlement lifecycle correct; open refunds block release
-- [ ] Reconciliation detects seeded mismatch
+- [x] Transition table enforced _(all 25 from/to pairs through the API, plus every actor in the pure table)_
+- [x] Partial/full refunds reconcile commission to the paisa; cannot exceed paid amount _(property test, 1,000 runs, and through the API; concurrent refunds cannot overshoot)_
+- [x] Cancel-before-ship restores stock once _(double call and concurrent customer/vendor cancels)_
+- [x] Settlement lifecycle correct; open refunds block release
+- [x] Reconciliation detects seeded mismatch
 
 ### Reviews, invoices, admin
 
@@ -80,7 +80,7 @@ Generated from the registered route table: for each route × role (anonymous, cu
 
 Prerequisites (DECISIONS D44, D46, D48, D49): Route usable in the test-mode Dashboard with a linked account attached by `npm run link-account`; auto-capture enabled; a webhook with its own secret pointing at a URL Razorpay accepts (not localhost, and not a blocklisted tunnel such as ngrok: use a staging deployment or `zrok`); `PAYMENT_PROVIDER=razorpay` with the test keys. Also confirm DECISIONS assumptions A8-A10 while running it.
 
-1. Create approved vendor + linked account in provider test mode. 2. Add products from 2 vendors, checkout with the provider's published test payment method. 3. Confirm order `placed`, transfers created on hold. 4. Mark delivered, advance time (or use admin release), confirm settlement transitions. 5. Issue partial refund, confirm commission reversal and transfer reversal. Record results in `docs/PAYMENT_TEST_LOG.md`; do not claim results before running.
+1. Create approved vendor + linked account in provider test mode. 2. Add products from 2 vendors, checkout with the provider's published test payment method. 3. Confirm order `placed`, transfers created on hold. 4. Mark delivered, advance time (or use admin release), confirm settlement transitions. 5. Issue partial refund, confirm commission reversal and transfer reversal. **Do this BOTH while the transfer is still on hold and after release** (DECISIONS A6 is only half closed: nothing I read says an on-hold transfer can be reversed). Also: cancel an unshipped sub-order, then check `refund.processed` and `transfer.processed` arrive and the payload path `payload.transfer.entity.id` (A11). Record results in `docs/PAYMENT_TEST_LOG.md`; do not claim results before running.
 
 ## 5. E2E journeys
 

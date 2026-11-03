@@ -1,4 +1,4 @@
-import { RECONCILE_JOB } from '../config/constants.js';
+import { RECONCILE_JOB, REFUND_RETRY_AFTER_MS } from '../config/constants.js';
 import { Order } from '../modules/orders/orders.model.js';
 import { Payment } from '../modules/payments/payments.model.js';
 import { Refund } from '../modules/refunds/refunds.model.js';
@@ -18,6 +18,7 @@ const LATE_CAPTURE_WINDOW_MS = 60 * 60_000;
  */
 export function createReconcilePendingJob({
   paymentsService,
+  refundsService = null,
   jobLocks,
   logger,
   config = RECONCILE_JOB,
@@ -77,6 +78,30 @@ export function createReconcilePendingJob({
             { err: err.message, refundId: refund.id },
             'Reconcile could not retry a refund',
           );
+        }
+      }
+
+      // Phase 6: refunds of a sub-order. One the provider had not accepted yet is retried after
+      // REFUND_RETRY_AFTER_MS; one it accepted but has not confirmed is looked up (lost webhook).
+      if (refundsService) {
+        const retryBefore = new Date(now.getTime() - REFUND_RETRY_AFTER_MS);
+        const open = await Refund.find({
+          status: 'initiated',
+          subOrderId: { $exists: true },
+          $or: [{ providerCallAt: { $exists: false } }, { providerCallAt: { $lt: retryBefore } }],
+        }).limit(config.batchSize);
+        for (const refund of open) {
+          try {
+            if (refund.providerRefundId) await refundsService.syncFromProvider(refund);
+            else await refundsService.finish(refund._id, { now });
+            result.refundsRetried += 1;
+          } catch (err) {
+            result.errors += 1;
+            logger.warn(
+              { err: err.message, refundId: refund.id },
+              'Reconcile could not retry a refund',
+            );
+          }
         }
       }
       return result;

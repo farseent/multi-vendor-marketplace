@@ -1,8 +1,15 @@
 import { WEBHOOK_STALE_CLAIM_MS } from '../../config/constants.js';
+import { Refund } from '../refunds/refunds.model.js';
+import { Settlement } from '../settlements/settlements.model.js';
 import { Payment, WebhookEvent } from './payments.model.js';
 
 // Events Phase 5 acts on (D46). Everything else is stored as `ignored`.
 const PAID_EVENTS = new Set(['payment.captured', 'order.paid']);
+// Phase 6 (D57). Refund events are official (A7, closed); `settlement.processed` names a
+// settlement, not a transfer, so it is acknowledged but not acted on (settled comes from the
+// transfer fetch, see settlementRelease job).
+const REFUND_EVENTS = new Set(['refund.processed', 'refund.failed']);
+const TRANSFER_EVENTS = new Set(['transfer.processed', 'transfer.failed']);
 
 /**
  * Webhook processing (ARCHITECTURE 3.2, DECISIONS D46). The controller has already verified the
@@ -15,6 +22,8 @@ export function createWebhooksService({
   provider,
   paymentProvider,
   paymentsService,
+  refundsService = null,
+  settlementsService = null,
   logger,
   staleClaimMs = WEBHOOK_STALE_CLAIM_MS,
 }) {
@@ -66,6 +75,26 @@ export function createWebhooksService({
         },
       );
       return { status: 'processed' };
+    }
+
+    // The body only says WHICH refund or transfer; what happened is asked of the provider (D46).
+    if (REFUND_EVENTS.has(eventType) && refundsService) {
+      const providerRefundId = body?.payload?.refund?.entity?.id;
+      if (!providerRefundId) return { status: 'ignored', error: 'no_refund_id' };
+      const refund = await Refund.findOne({ providerRefundId });
+      // Not recorded yet (the event beat our own write): the reconcile job looks it up later.
+      if (!refund) return { status: 'ignored', error: 'unknown_refund' };
+      return { status: 'processed', outcome: await refundsService.syncFromProvider(refund) };
+    }
+    if (TRANSFER_EVENTS.has(eventType) && settlementsService) {
+      const providerTransferId = body?.payload?.transfer?.entity?.id;
+      if (!providerTransferId) return { status: 'ignored', error: 'no_transfer_id' };
+      const settlement = await Settlement.findOne({ providerTransferId });
+      if (!settlement) return { status: 'ignored', error: 'unknown_transfer' };
+      return {
+        status: 'processed',
+        outcome: await settlementsService.syncFromProvider(settlement),
+      };
     }
 
     if (!PAID_EVENTS.has(eventType)) return { status: 'ignored' };

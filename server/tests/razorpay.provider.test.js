@@ -370,3 +370,116 @@ describe('createPaymentProvider', () => {
     expect(JSON.stringify(Object.keys(real))).not.toMatch(/secret/i);
   });
 });
+
+describe('Phase 6 transfer and refund calls (S2, S20, S21)', () => {
+  it('releaseTransfer PATCHes the transfer with on_hold: false', async () => {
+    const { provider, requests } = make({ body: { id: 'trf_1', on_hold: false } });
+    expect(await provider.releaseTransfer('trf_1')).toEqual({ providerTransferId: 'trf_1' });
+    expect(requests[0].url).toBe('https://api.razorpay.com/v1/transfers/trf_1');
+    expect(requests[0].method).toBe('PATCH');
+    expect(requests[0].body).toEqual({ on_hold: false });
+  });
+
+  it('reverseTransfer POSTs the amount (paise) and notes to /reversals and returns the reversal id', async () => {
+    const { provider, requests } = make({
+      body: { id: 'rvrsl_9', entity: 'reversal', transfer_id: 'trf_1', amount: 90000 },
+    });
+    const out = await provider.reverseTransfer({
+      providerTransferId: 'trf_1',
+      amountPaise: 90000,
+      notes: { refundId: 'r1' },
+    });
+    expect(out).toEqual({ providerReversalId: 'rvrsl_9' });
+    expect(requests[0].url).toBe('https://api.razorpay.com/v1/transfers/trf_1/reversals');
+    expect(requests[0].method).toBe('POST');
+    expect(requests[0].body).toEqual({ amount: 90000, notes: { refundId: 'r1' } });
+  });
+
+  it('reverseTransfer treats an answer without an id as a provider error', async () => {
+    const { provider } = make({ body: {} });
+    await expect(
+      provider.reverseTransfer({ providerTransferId: 'trf_1', amountPaise: 100 }),
+    ).rejects.toMatchObject({ code: 'PAYMENT_PROVIDER_ERROR' });
+  });
+
+  it('a 400 (e.g. the linked account has too little balance) becomes PAYMENT_PROVIDER_ERROR, never a leak of the body', async () => {
+    const { provider } = make({
+      status: 400,
+      body: { error: { description: 'Insufficient balance in linked account' } },
+    });
+    const err = await provider
+      .reverseTransfer({ providerTransferId: 'trf_1', amountPaise: 100 })
+      .catch((e) => e);
+    expect(err.code).toBe('PAYMENT_PROVIDER_ERROR');
+    expect(err.status).toBe(502);
+    expect(JSON.stringify(err)).not.toMatch(/Insufficient/);
+  });
+
+  it('fetchTransfer maps amount, amount_reversed, status, on_hold and settlement_status', async () => {
+    const { provider, requests } = make({
+      body: {
+        id: 'trf_1',
+        amount: 100000,
+        amount_reversed: 25000,
+        status: 'partially_reversed',
+        on_hold: 1,
+        settlement_status: 'on_hold',
+      },
+    });
+    expect(await provider.fetchTransfer('trf_1')).toEqual({
+      id: 'trf_1',
+      amountPaise: 100000,
+      amountReversedPaise: 25000,
+      status: 'partially_reversed',
+      onHold: true,
+      settlementStatus: 'on_hold',
+    });
+    expect(requests[0].url).toBe('https://api.razorpay.com/v1/transfers/trf_1');
+    expect(requests[0].method).toBe('GET');
+  });
+
+  it('fetchTransfer treats a missing amount_reversed as 0', async () => {
+    const { provider } = make({
+      body: {
+        id: 'trf_1',
+        amount: 500,
+        status: 'created',
+        on_hold: false,
+        settlement_status: 'pending',
+      },
+    });
+    expect((await provider.fetchTransfer('trf_1')).amountReversedPaise).toBe(0);
+  });
+
+  it('fetchRefund reads the refund of a payment and normalises the status', async () => {
+    for (const [raw, expected] of [
+      ['processed', 'processed'],
+      ['pending', 'pending'],
+      ['failed', 'failed'],
+      ['something_new', 'pending'],
+    ]) {
+      const { provider, requests } = make({
+        body: { id: 'rfnd_1', payment_id: 'pay_1', amount: 5000, status: raw },
+      });
+      const out = await provider.fetchRefund({
+        providerPaymentId: 'pay_1',
+        providerRefundId: 'rfnd_1',
+      });
+      expect(out).toMatchObject({
+        id: 'rfnd_1',
+        paymentId: 'pay_1',
+        amountPaise: 5000,
+        status: expected,
+      });
+      expect(requests[0].url).toBe('https://api.razorpay.com/v1/payments/pay_1/refunds/rfnd_1');
+    }
+  });
+
+  it('path segments are URL-encoded so an id cannot change the path', async () => {
+    const { provider, requests } = make({ body: { id: 'x', amount: 1, status: 'created' } });
+    await provider.fetchTransfer('trf_1/../../payments');
+    expect(requests[0].url).toBe(
+      'https://api.razorpay.com/v1/transfers/trf_1%2F..%2F..%2Fpayments',
+    );
+  });
+});

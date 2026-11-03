@@ -11,6 +11,7 @@ import { JobLock } from '../src/jobs/jobLock.js';
 import { Order, SubOrder, Counter } from '../src/modules/orders/orders.model.js';
 import { Payment, WebhookEvent } from '../src/modules/payments/payments.model.js';
 import { Refund } from '../src/modules/refunds/refunds.model.js';
+import { ReconciliationReport } from '../src/modules/settlements/reconciliation.model.js';
 import { SearchOutbox } from '../src/modules/search/search.model.js';
 import { Settlement } from '../src/modules/settlements/settlements.model.js';
 import { Vendor } from '../src/modules/shops/shops.model.js';
@@ -35,6 +36,7 @@ const MODELS = [
   WebhookEvent,
   Settlement,
   Refund,
+  ReconciliationReport,
 ];
 
 /**
