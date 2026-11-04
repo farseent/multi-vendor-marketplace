@@ -484,3 +484,47 @@ describe('Phase 5 late-capture refund and settlements', () => {
     expect((await Order.findById(co.body.data.order.id)).refundStatus).toBe('full');
   });
 });
+
+// D57 (accepted 2026-11-03): the vendor is debited a share of the ACTUAL payout, so a platform-funded
+// coupon's cost stays with the platform and a full refund leaves the vendor payout at zero.
+describe('D57: refunds under a platform-funded coupon', () => {
+  const coupon = {
+    code: 'PLAT10',
+    fundedBy: 'platform',
+    scope: 'platform',
+    type: 'percent',
+    value: 10,
+  };
+
+  it('debits the proportional payout, not refund - commission; the last refund takes the remainder', async () => {
+    // 2 x 100000 = 200000, platform coupon 10% -> customer pays 180000; commission 10% of the
+    // base 200000 = 20000, vendor payout 180000.
+    const o = await paidOrder(app, ledger, { prices: [100000], quantities: [2], coupon });
+    const sub = o.subs[0];
+    expect(sub).toMatchObject({ customerTotalPaise: 180000, vendorPayoutPaise: 180000 });
+    expect(sub.commission.amountPaise).toBe(20000);
+
+    const half = await refund(sub.id, { amountPaise: 90000 });
+    expect(half.status, JSON.stringify(half.body)).toBe(201);
+    // D9 commission reversal = 90000 x 20000 / 180000 = 10000; D57 vendor debit = 90000 x 180000 / 180000.
+    // (The earlier D9-only rule would have debited 90000 - 10000 = 80000.)
+    expect(half.body.data.refund).toMatchObject({
+      commissionReversedPaise: 10000,
+      vendorDebitPaise: 90000,
+    });
+    expect((await settlementOf(sub.id)).netPayoutPaise).toBe(90000);
+
+    const rest = await refund(sub.id, {}); // everything still refundable
+    expect(rest.status, JSON.stringify(rest.body)).toBe(201);
+    expect(rest.body.data.refund).toMatchObject({
+      amountPaise: 90000,
+      commissionReversedPaise: 10000,
+      vendorDebitPaise: 90000,
+    });
+    const s = await settlementOf(sub.id);
+    expect(s).toMatchObject({ refundAdjustmentPaise: 180000, netPayoutPaise: 0 });
+    // The provider transfer was reversed by the whole payout, in two reversals.
+    expect(ledger.state.transfers.get(s.providerTransferId).amountReversedPaise).toBe(180000);
+    expect((await subOrderOf(sub.id)).refundStatus).toBe('full');
+  });
+});

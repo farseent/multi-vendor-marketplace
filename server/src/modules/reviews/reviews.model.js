@@ -28,5 +28,7 @@ const reviewSchema = new mongoose.Schema(
 // One review per customer per product (acceptance: a second one is 409).
 reviewSchema.index({ customerId: 1, productId: 1 }, { unique: true });
 reviewSchema.index({ productId: 1, status: 1, createdAt: -1 });
+// Phase 8: the admin moderation list filters by status across all products.
+reviewSchema.index({ status: 1, createdAt: -1 });
 
 export const Review = mongoose.models.Review ?? mongoose.model('Review', reviewSchema);

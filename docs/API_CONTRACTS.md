@@ -153,7 +153,9 @@ Update body (at least one of): `value, minOrderPaise, maxDiscountPaise (null cle
 | PATCH          | /admin/vendors/:vendorId/commission                                       | `{ commissionRateBps }`; accepts `null`                                            |
 | GET / PATCH    | /admin/users, /admin/users/:userId/status                                 | suspend/reactivate                                                                 |
 | GET/POST/PATCH | /admin/categories(/:categoryId)                                           |                                                                                    |
-| PATCH          | /admin/products/:productId/status                                         | suspend/restore                                                                    |
+| PATCH          | /admin/products/:productId/status                                         | `{ status: "suspended" \| "draft" }` (implemented, Phase 8, D65)                   |
+| GET            | /admin/products                                                           | **added in Phase 8 (D66):** filters `status`, `vendorId`, `q`                      |
+| GET            | /admin/reviews                                                            | **added in Phase 8 (D66):** filters `status`, `productId`, `rating`                |
 | PATCH          | /admin/reviews/:reviewId/status                                           | hide/publish                                                                       |
 | GET/POST/PATCH | /admin/coupons(/:couponId)                                                | platform coupons                                                                   |
 | GET            | /admin/orders, /admin/orders/:orderId                                     |                                                                                    |
@@ -474,3 +476,19 @@ Calculation: `commissionReversedPaise` follows D9. `vendorDebitPaise` is calcula
 Public. Returns HTTP 200 when the service is ready to accept requests, or HTTP 503 when it is not ready.
 
 **Response body:** The current `HANDOVER.md` documents these HTTP status codes but does not define a response JSON shape. Do not rely on the previous `{ "success": true, "data": { "status": "ready" } }` / `SERVICE_UNAVAILABLE` examples as the current contract. Update this section with the exact response bodies once confirmed from the implemented health route.
+
+## Phase 8: admin console and analytics (implemented)
+
+All `/admin/*` routes are admin-only (401 without a token, 403 for customers and vendors). Every list takes `?page&limit` (default 20, max 100) and answers `{ data: [...], meta: { page, limit, total, totalPages } }`. Anything malformed is 422 `VALIDATION_ERROR`.
+
+- `GET /admin/products?status=&vendorId=&q=`: `{ id, slug, title, sku, status, pricePaise, stockQty, ratingAvg, ratingCount, shop: { id, name, slug } | null, createdAt, updatedAt }`, newest first, drafts and suspended included. `q` is a case-insensitive title fragment, matched literally.
+- `PATCH /admin/products/:productId/status`: body `{ status: "suspended" | "draft" }` (nothing else; unknown fields are 422) -> 200 `{ id, slug, status, previousStatus }`. 404 unknown product; 409 `INVALID_STATE_TRANSITION` when the move is not allowed (suspend from draft/active/archived; `draft` only from suspended). Audited as `product.status_changed`.
+- `GET /admin/reviews?status=&productId=&rating=`: `{ id, status, rating, title, body, product: { id, title, slug }, customer: { id, name, email } | null, createdAt, updatedAt }`, hidden ones included.
+- `GET /admin/orders?status=&paymentStatus=&refundStatus=&q=`: `{ id, orderNumber, status, paymentStatus, refundStatus, currency, totalPaise, placedAt, createdAt, customer }`. `q` is the start of an order number (any case).
+- `GET /admin/orders/:orderId`: the summary plus `subtotalPaise, discountPaise, shippingPaise, shippingAddress, coupon { code, fundedBy, discountPaise } | null, payment { provider, status, method, amountPaise, providerOrderId, providerPaymentId, capturedAt } | null, orderRefunds[]` and `subOrders[]`: `{ id, subOrderNumber, shop, items[], subtotalPaise, discountPaise, shippingPaise, customerTotalPaise, commission { rateBps, rateSource, amountPaise }, vendorPayoutPaise, fulfillmentStatus, tracking, deliveredAt, returnWindowEndsAt, refundStatus, refundedPaise, refundablePaise, statusHistory[], refunds[] { id, status, reason, note, amountPaise, commissionReversedPaise, vendorDebitPaise, createdAt }, settlement { id, status, grossPaise, commissionPaise, refundAdjustmentPaise, netPayoutPaise, eligibleAt, releasedAt } | null }`. `refundablePaise` is a display hint (0 when unpaid, cancelled, or past the return window); the refund endpoint stays the authority. 404 unknown order.
+- Analytics (D64, D67). Query: `from`, `to` as `YYYY-MM-DD` (UTC, inclusive; both optional; at most 366 days; `from` after `to` or an impossible date is 422). Every response has `range { from, to }`, `currency: "INR"` and `generatedAt`; cached 5 minutes.
+  - `GET /admin/analytics/overview` -> `{ orderCount, subOrderCount, gmvPaise, refundedPaise, netGmvPaise, commissionPaise, commissionReversedPaise, netCommissionPaise, averageOrderValuePaise }`.
+  - `GET /admin/analytics/sales-timeseries?interval=day|month` (default `day`) -> `{ interval, points: [{ bucket, orderCount, gmvPaise }] }`, every day or month in the range present, empty ones as zero (`bucket` is `YYYY-MM-DD` or `YYYY-MM`).
+  - `GET /admin/analytics/top-vendors?limit=` (default 10, max 50) -> `{ items: [{ vendorId, shopName, shopSlug, subOrderCount, gmvPaise, refundedPaise, commissionPaise }] }`, by `gmvPaise` desc.
+  - `GET /admin/analytics/top-products?limit=` -> `{ items: [{ productId, title, vendorId, shopName, unitsSold, revenuePaise }] }`, by `revenuePaise` desc, cancelled sub-orders left out.
+- `GET /admin/users` and `PATCH /admin/users/:userId/status` remain in the table above but are **not implemented** (outside the Phase 8 scope list).

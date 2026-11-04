@@ -1,39 +1,26 @@
 # HANDOVER.md
 
-## Current state (after Phase 7: Reviews and invoices)
+## Current state (after Phase 8: Admin console and analytics)
 
-Phase 7 code is implemented. **Owner reports the automated local checks completed successfully:** dependency installation, lint, Prettier formatting/check, server tests, client tests and client production build. Test counts were not supplied. Manual browser checks for reviews/invoices and manual Razorpay test-mode payment/refund checks for Phases 5-6 are intentionally deferred to the relevant end-of-phase manual verification passes. No Phase 8 code exists (no admin UI, analytics, or admin review listing). The shared upload did not include `.git`, so commit status is not verified here. **One accepted Phase 6 decision still requires a code/test change:** D57 now requires platform-funded coupon refunds to debit the vendor's proportional actual payout; the current implementation described in the previous handover used the D9-only formula and must be aligned before Phase 6 is considered complete.
+Phase 8 code is implemented and **verified by automated tests in the assistant's sandbox only** (not yet run on the owner's machine; no browser check). Phase 6's accepted **D57 vendor-debit formula is now implemented and tested** (it was the open follow-up). The admin console covers analytics (cards, GMV chart, top vendors/products), orders (list, detail, refund form, early release), vendors, products (suspend/restore), reviews (hide/publish), platform coupons (create, enable/disable) and settlements (release, reconciliation). Phase 9 (hardening/deployment) is next and has not been started.
 
-- **Reviews:** `GET /products/:productId/reviews` (public), `GET .../reviews/mine`, `POST .../reviews`, `PATCH|DELETE /reviews/:reviewId` (owner, 30 days), `PATCH /admin/reviews/:reviewId/status`. Eligibility = a `delivered` sub-order of the customer containing the product (403 otherwise); one review per customer and product (409 `REVIEW_EXISTS`). Every rating-changing action recomputes `ratingAvg` (2 decimals) and `ratingCount` from published reviews inside the same transaction, then deletes `cache:product:{slug}` and enqueues a search re-index (D61, D62).
-- **Invoices:** `GET /orders/:orderId/invoice` (owner customer, paid only). Number `INV-YYYY-NNNNNN` stored once per order (unique `orderId`, counter `invoice:YYYY`); PDF rebuilt on every download with pdfkit, shows every seller's items, coupon/discount, total and any refunds (D63).
-- **Client:** reviews section on `/products/:slug` (list, pagination, write/edit/delete form), "Download invoice (PDF)" on `/orders/:orderId` for paid orders (fetched with the bearer token and saved as a blob).
+## Decisions
 
-## Accepted decisions (2026-11-03)
-
-D57-D63 have been reviewed and accepted by the owner. Key outcomes:
-
-- **D57 refunds:** keep D9 commission reversal, but calculate vendor debit proportionally from actual `vendorPayoutPaise` for all refunds; a full refund under a platform-funded coupon leaves vendor payout at zero and the platform bears the coupon subsidy. Reject a calculated vendor transfer reversal of 1-99 paise with 422 `refund_below_minimum`; zero is allowed. Paid coupon redemptions remain consumed after cancellation/refund.
-- **D58 fulfillment:** suspended vendors cannot ship/deliver even previously paid orders. All-cancelled sub-orders make the parent order `cancelled`; a mixed delivered/cancelled order is `completed`.
-- **D59-D60:** admin manual settlement release may bypass only the 7-day window; all other guards remain. Reconciliation is read-only and never corrects financial records.
-- **D61 reviews:** full refund does not remove review eligibility; hard deletion permits a new review and fresh 30-day edit window; editing a hidden review does not republish it.
-- **D62:** recompute rating aggregates from published reviews; store `ratingAvg` to 2 decimals.
-- **D63:** keep generic invoice platform name `Marketplace` for now.
-
-D57's revised `vendorDebitPaise` formula is an implementation/test follow-up, not merely a documentation change.
+D57 implemented (see DECISIONS). **D64-D67 are Proposed and need the owner's review:** D64 what analytics count (paid orders by `placedAt`, UTC, inclusive days; gross GMV with refunds beside it; top products exclude cancelled sub-orders; reviews not counted); D65 product moderation (`suspended` / back to `draft` only); D66 admin reads added beyond the contract (`GET /admin/products`, `GET /admin/reviews`; no separate refunds list; `/admin/users` not built); D67 analytics queries, 5-minute TTL cache, speed, and the consequence that the time series has orders and GMV only.
 
 ## Relevant files
 
-New (server): `src/lib/ratings.js`; `src/modules/reviews/` `reviews.{model,validator,service,controller,routes}.js`; `src/modules/invoices/` `invoices.{model,view,render,service,controller,routes}.js`. New tests: `reviews.test.js`, `invoices.test.js`, `phase7.unit.test.js`, `phase7.helpers.js`.
-New (client): `src/lib/reviews.js`, `src/lib/invoices.js` (+ tests), `src/components/ReviewsSection.jsx`, `src/components/reviews.css`.
-Changed: `server/package.json` (+`pdfkit ^0.17.1`), `src/app.js` (wiring, `phase7Services`, CORS exposes `Content-Disposition`), `src/server.js` (index init), `src/config/constants.js`, `tests/db.js`, `tests/rbac.test.js`; client `lib/api.js` (+`apiDownload`), `pages/ProductPage.jsx`, `pages/OrderPage.jsx`. Docs: DECISIONS, API_CONTRACTS, DATABASE_SCHEMA, TESTING, IMPLEMENTATION_PLAN, this file.
+New (server): `src/modules/admin/` `admin.{validator,service,controller,routes}.js`, `analytics.service.js`. New tests: `analytics.test.js`, `admin.test.js`, `adminAudit.test.js`, `phase8.helpers.js`.
+New (client): `src/lib/admin.js` (+ `admin.test.js`), `src/admin/` (`AdminLayout`, `AdminAnalyticsPage`, `AdminOrdersPage`, `AdminOrderPage`, `AdminVendorsPage`, `AdminProductsPage`, `AdminReviewsPage`, `AdminCouponsPage`, `AdminSettlementsPage`, `charts.jsx`, `Pager.jsx`, `hooks.js`, `admin.css`).
+Changed: `src/lib/refunds.js` and `src/modules/refunds/refunds.service.js` (D57); `src/app.js` (wiring); `src/config/constants.js` (`ANALYTICS`, `ADMIN_PRODUCT_TRANSITIONS`, analytics cache key/TTL); `orders.model.js`, `reviews.model.js` (one index each); `tests/phase6.unit.test.js`, `tests/refunds.test.js`, `tests/rbac.test.js`; client `App.jsx` (admin routes), `components/Layout.jsx` (Admin link). Docs: DECISIONS, API_CONTRACTS, DATABASE_SCHEMA, IMPLEMENTATION_PLAN, TESTING, this file.
 
 ## API changes
 
-New endpoints listed above (shapes in API_CONTRACTS "implemented, Phase 7"). Addition beyond the contract: `GET /products/:productId/reviews/mine`. New 409 reasons `edit_window_closed`, `order_not_paid`; new 403 reason `no_delivered_purchase`. Audit action `review.status_changed`.
+New: `GET /admin/products`, `PATCH /admin/products/:productId/status`, `GET /admin/reviews`, `GET /admin/orders`, `GET /admin/orders/:orderId`, `GET /admin/analytics/{overview,sales-timeseries,top-vendors,top-products}` (shapes in API_CONTRACTS "Phase 8"). New audit action `product.status_changed`. Behaviour change (D57): `vendorDebitPaise` of a refund is now proportional to the actual vendor payout (differs from the old value only under platform-funded coupons).
 
 ## Schema changes
 
-New collections `reviews` and `invoices` exactly as DATABASE_SCHEMA already described (indexes added). `counters` gets `invoice:YYYY` ids. `products.ratingAvg/ratingCount` now maintained (they were always 0 before). No existing field changed.
+No new collection or field. Indexes added: `orders {paymentStatus:1, placedAt:-1}`, `reviews {status:1, createdAt:-1}`.
 
 ## Environment variables
 
@@ -42,28 +29,26 @@ None new.
 ## Commands
 
 ```
-npm install                  # installs pdfkit
-npm run lint && npx prettier --write . && npx prettier --check .
+npm install
+npm run lint && npx prettier --check .
 npm test -w server           # needs a MongoDB replica-set binary (MONGOMS_SYSTEM_BINARY=/path/to/mongod)
 npm test -w client && npm run build -w client
 ```
 
-## Verification (what was actually run)
+## Verification (what was actually run, in the assistant's sandbox, MongoDB 8.3.7)
 
-**Owner-reported passing commands:** `npm install`; `npm run lint`; `npx prettier --write .`; `npx prettier --check .`; `npm test -w server`; `npm test -w client`; `npm run build -w client`. The owner reports these completed successfully; exact test counts/output were not included in the handover. This confirms the automated test and client-build checks only; manual browser and Razorpay provider checks remain deferred.
-
-**Still not manually verified:** review and invoice behavior in the browser; visual PDF layout after downloading; real Razorpay checkout, refund-before-release and refund-after-release behavior (including whether an on-hold transfer can be reversed, A6); and the provider payload assumptions A11-A13. Automated test/build commands are owner-reported passing. The accepted D57 platform-funded coupon vendor-debit change has not yet been implemented or tested.
+Server: 956 passed, 1 failed (below, pre-existing). Client: 143 passed; production build OK. ESLint: 1 error, pre-existing. Analytics speed on 10,000 seeded orders (median of 5 runs): overview 136 ms, time series 117 ms, top vendors 302 ms, top products 154 ms; please re-measure on your machine.
+**Not verified:** the admin console in a browser; real Razorpay behaviour (A6, A11-A13 unchanged); results on your machine.
 
 ## Known issues
 
-- No admin list of reviews (Phase 8): an admin needs a review id to un-hide one.
-- Invoice is not a tax invoice; text outside Latin-1 prints as `?`; amounts print as `INR` (no rupee glyph).
-- Invoice year follows generation date, not order date.
-- `soldCount` still not maintained. Phase 6 provider limitations remain: reversal and refund are separate provider calls; a provider refund failure after a successful reversal requires manual action; reconciliation checks one-by-one and is read-only; order page lists first 50; A1-A13 checks remain as recorded. D57's accepted platform-funded coupon vendor-debit calculation still needs implementation and tests.
+- **Pre-existing, not caused by Phase 8:** `reviews.test.js` "works inside 30 days and is 409 edit_window_closed after" fails here: the test's helper tries to back-date `createdAt`, which Mongoose 9.11.4 treats as immutable. Adding `overwriteImmutable: true` to that `updateOne` makes all 38 review tests pass (verified, then reverted: not changed).
+- **Pre-existing:** ESLint reports an unused `api` import in `tests/invoices.test.js`; `prettier --check` flags 13 files of the uploaded snapshot (Phase 7 files and some docs), although HANDOVER reported it passing.
+- The time series has no commission/refund per day (D67). Analytics are up to 5 minutes old (TTL only).
+- Admin `refundablePaise` mirrors the refund endpoint's rules for display only; users list/suspend (`/admin/users`) is not built.
+- Product restore returns to `draft`, not to the previous status (D65).
 
-## Next-phase prerequisites (Phase 8: Admin console and analytics)
+## Next-phase prerequisites (Phase 9: Hardening and deployment)
 
-- Implement and test the accepted D57 platform-funded coupon vendor-debit formula before treating Phase 6 as fully aligned. D57-D63 owner review is complete; manual Razorpay and browser checks are intentionally deferred to the phase-end manual verification passes.
-- Phase 8's "every admin mutation is audited" route-table test: `PATCH /admin/reviews/:id/status` audits only real changes.
-- Admin UI needs review listing (`GET /admin/reviews`, not built) and may reuse `reviews` indexes.
-- Decide whether analytics should count refunded orders and hidden reviews; this remains a Phase 8 product/reporting definition, not a D57-D63 open decision.
+- Owner review of D64-D67; run the checks above on your machine and click through the console.
+- Phase 9 items from IMPLEMENTATION_PLAN (npm audit, rate limits, deploy, README). Consider Phase 9: a denormalized `paidAt` on sub-orders if per-day commission is wanted; the manual Razorpay test-mode script (TESTING section 4) is still outstanding.

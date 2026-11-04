@@ -164,7 +164,7 @@ Indexes: `{code:1}` unique; `{vendorId:1}`.
 - `webhookEvents`: `provider, eventId (the x-razorpay-event-id header; unique with provider), eventType, status: received|processed|failed|ignored, attempts, receivedAt, claimedAt, processedAt?, error?`; TTL 90 days on `receivedAt`. `claimedAt` is when a handler last took ownership of the event (atomic claim, DECISIONS D46).
 - `searchOutbox`: `productId, op:'upsert|delete', attempts, nextAttemptAt, lastError?, createdAt`; indexes `{nextAttemptAt:1}` and `{productId:1}`.
   `op` is advisory; the sync job determines whether to index or delete using the current product and vendor state.
-- `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; written by admin mutations for `vendor.status_changed`, `vendor.commission_changed`, `category.created`, `category.updated`, and `search.reindexed`, `review.status_changed` (`meta { from, to, productId }`), `coupon.created`, `coupon.updated`, and `vendor.payout_account_attached` (written by the `link-account` admin script, `meta { previousLinkedAccountId, linkedAccountId }`); index `{entityType:1,entityId:1,createdAt:-1}`.
+- `auditLogs`: `actorId, actorRole, action, entityType, entityId, meta, createdAt`; written by admin mutations for `vendor.status_changed`, `vendor.commission_changed`, `category.created`, `category.updated`, and `search.reindexed`, `review.status_changed` (`meta { from, to, productId }`), `coupon.created`, `coupon.updated`, `product.status_changed` (Phase 8, `meta { from, to, vendorId }`), and `vendor.payout_account_attached` (written by the `link-account` admin script, `meta { previousLinkedAccountId, linkedAccountId }`); index `{entityType:1,entityId:1,createdAt:-1}`.
 - `reconciliationReports`: `runAt`, `status` (`ok|mismatch`), `trigger` (`job|admin`), `triggeredBy?` (reports only; reconciliation is read-only and does not correct financial records, D60), `totals{settlementsChecked, skippedOpenRefund, localNetPayoutPaise, providerRemainingPaise, mismatchCount, truncated}`, `mismatches[]` (`type, entityType, settlementId?, refundId?, subOrderId?, providerTransferId?, expected?, actual?, detail?`; at most 200 stored). Index `{runAt:-1}`. Types: see D60.
 - `jobLocks`: `{ _id: jobName, lockedUntil, owner }`.
 
@@ -202,3 +202,7 @@ users 1-1 vendors; vendors 1-N products; categories 1-N products; users 1-1 cart
 // webhookEvents
 { "provider": "razorpay", "eventId": "evt_TEST456", "eventType": "order.paid", "status": "processed", "attempts": 1 }
 ```
+
+## Phase 8 index changes
+
+No new collection and no new field. Two indexes were added: `orders {paymentStatus:1, placedAt:-1}` (analytics read paid orders by payment time) and `reviews {status:1, createdAt:-1}` (the admin moderation list). They are built by `Model.init()` at start-up like the others.

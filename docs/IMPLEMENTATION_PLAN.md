@@ -103,7 +103,7 @@ Acceptance:
 
 - [x] Every disallowed transition in the table returns 409 (table-driven test). (`fulfillment.test.js`: 25 pairs through the API; `phase6.unit.test.js`: every actor)
 - [x] Partial refunds preserve the D9 commission-reversal total and non-negative settlement payout for the previously implemented behavior (property test; existing test coverage must be revised for the accepted D57 vendor-debit rule below). (`phase6.unit.test.js`, `refunds.test.js`)
-- [ ] **Accepted D57 change, implementation/test follow-up:** for platform-funded coupons, calculate `vendorDebitPaise` proportionally from the actual vendor payout, with the final refund taking the remaining payout; a full refund must leave vendor net payout at zero. Keep `commissionReversedPaise` under D9. Add/update property and API tests for partial and full refunds, including odd-paise rounding and final remainder behavior.
+- [x] **Accepted D57 change, implemented 2026-11-03 (Phase 8 preparation; `phase6.unit.test.js`, `refunds.test.js`):** for platform-funded coupons, calculate `vendorDebitPaise` proportionally from the actual vendor payout, with the final refund taking the remaining payout; a full refund must leave vendor net payout at zero. Keep `commissionReversedPaise` under D9. Add/update property and API tests for partial and full refunds, including odd-paise rounding and final remainder behavior.
 - [x] Refund total can never exceed `customerTotalPaise` (409). (`refunds.test.js`, including 5 concurrent refunds)
 - [x] Cancel before shipping restores stock exactly once (double-call test). (`fulfillment.test.js`, also 3 concurrent cancels)
 - [x] Settlement moves to `pending_release` only on `delivered`; release job ignores settlements with an open refund or return window not elapsed. (`settlements.test.js`)
@@ -129,6 +129,8 @@ Acceptance:
 - Analytics totals equal values recomputed directly from seeded fixtures (GMV, commission, order count) exactly.
 - Analytics endpoints respond < 500 ms on 10,000 seeded orders locally (measured; recorded).
 - Every admin mutation creates an `auditLogs` entry (route-table test).
+
+**Status: implemented; waiting for the owner's review (D64-D67 proposed).** Automated evidence: `analytics.test.js` (exact totals, boundaries, validation, cache, 10,000-order timing), `admin.test.js`, `adminAudit.test.js`, `phase6.unit.test.js`. Not yet checked by a person: the console in a browser.
 
 ## Phase 9: Hardening and deployment
 

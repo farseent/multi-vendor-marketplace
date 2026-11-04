@@ -67,7 +67,10 @@ Generated from the registered route table: for each route × role (anonymous, cu
 
 - [ ] Review eligibility and uniqueness enforced; aggregates correct _(written in `reviews.test.js`; **not run**, see HANDOVER)_
 - [ ] Invoice access limited to owner and paid orders _(written in `invoices.test.js`; **not run**)_
-- [ ] Analytics equals fixture-computed values; every admin mutation audited
+- [x] Analytics equals fixture-computed values _(`analytics.test.js`: 900 seeded orders, GMV, commission, refunds, order count, per-day, per-vendor, per-product, all exact)_
+- [x] Analytics respond < 500 ms on 10,000 seeded orders _(same file; sandbox medians over 5 runs: overview 136 ms, time series 117 ms, top vendors 302 ms, top products 154 ms; re-measure on your machine)_
+- [x] Every admin mutation audited _(`adminAudit.test.js`: a table with one successful call per mutating `/admin` route, plus a test that fails if a route is missing from it)_
+- [ ] Admin console used in a browser (analytics charts, refund form, product suspend, coupon create) _(not done)_
 
 ### Non-functional
 

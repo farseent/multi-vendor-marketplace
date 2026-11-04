@@ -65,6 +65,8 @@ orderSchema.index(
   { partialFilterExpression: { status: 'pending_payment' } },
 );
 orderSchema.index({ createdAt: -1 });
+// Phase 8: analytics read paid orders by the time they were paid, and the admin list filters by status.
+orderSchema.index({ paymentStatus: 1, placedAt: -1 });
 
 const itemSchema = new mongoose.Schema(
   {

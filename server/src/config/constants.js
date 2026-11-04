@@ -76,8 +76,9 @@ export const CACHE = {
     product: (slug) => `cache:product:${slug}`,
     categories: 'cache:categories',
     search: (hash) => `cache:search:${hash}`,
+    analytics: (endpoint, hash) => `cache:analytics:${endpoint}:${hash}`, // Phase 8, TTL only
   },
-  ttlSeconds: { product: 5 * 60, categories: 60 * 60, search: 60 },
+  ttlSeconds: { product: 5 * 60, categories: 60 * 60, search: 60, analytics: 5 * 60 },
 };
 
 // Cart and coupons (Phase 4)
@@ -202,4 +203,20 @@ export const INVOICE = {
   // The seller named on the PDF. Not a tax identity: invoices are not GST-compliant (D19).
   platformName: 'Marketplace',
   numberPrefix: 'INV',
+};
+
+// Admin console and analytics (Phase 8, D64-D67)
+export const ANALYTICS = {
+  defaultDays: 30, // when `from`/`to` are omitted: the last 30 UTC days, today included
+  maxDays: 366, // widest range one request may ask for
+  intervals: ['day', 'month'],
+  topDefault: 10,
+  topMax: 50,
+};
+// What an admin may move a product to (D65). Anything not listed is a 409.
+export const ADMIN_PRODUCT_TRANSITIONS = {
+  draft: ['suspended'],
+  active: ['suspended'],
+  archived: ['suspended'],
+  suspended: ['draft'],
 };

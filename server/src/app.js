@@ -12,6 +12,10 @@ import { requestId } from './middleware/requestId.js';
 import { createLoadShop } from './middleware/shop.js';
 import { createCache } from './lib/cache.js';
 import { createJobLocks } from './jobs/jobLock.js';
+import { createAdminController } from './modules/admin/admin.controller.js';
+import { createAdminRouter } from './modules/admin/admin.routes.js';
+import { createAdminService } from './modules/admin/admin.service.js';
+import { createAnalyticsService } from './modules/admin/analytics.service.js';
 import { createAuditService } from './modules/audit/audit.service.js';
 import { createAuthController } from './modules/auth/auth.controller.js';
 import { createAuthRouter } from './modules/auth/auth.routes.js';
@@ -205,6 +209,9 @@ export function createApp({
   const reviewsService = createReviewsService({ audit, cache, searchOutbox });
   const invoicesService = createInvoicesService();
   app.set('phase7Services', { reviewsService, invoicesService });
+  // --- Phase 8: admin console reads, product moderation, analytics ---
+  const adminService = createAdminService({ audit, cache, searchOutbox });
+  const analyticsService = createAnalyticsService({ cache });
 
   // The background jobs (server.js) use the same service instances as the HTTP handlers.
   app.set('paymentServices', { lifecycle, paymentsService });
@@ -270,6 +277,7 @@ export function createApp({
       controller: createInvoicesController({ invoicesService }),
       authenticate,
     }),
+    createAdminRouter({ controller: createAdminController({ adminService, analyticsService }) }),
   ];
   app.set('apiRouters', routers);
 

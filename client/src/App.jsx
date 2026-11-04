@@ -1,4 +1,13 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import AdminAnalyticsPage from './admin/AdminAnalyticsPage.jsx';
+import AdminCouponsPage from './admin/AdminCouponsPage.jsx';
+import AdminLayout from './admin/AdminLayout.jsx';
+import AdminOrderPage from './admin/AdminOrderPage.jsx';
+import AdminOrdersPage from './admin/AdminOrdersPage.jsx';
+import AdminProductsPage from './admin/AdminProductsPage.jsx';
+import AdminReviewsPage from './admin/AdminReviewsPage.jsx';
+import AdminSettlementsPage from './admin/AdminSettlementsPage.jsx';
+import AdminVendorsPage from './admin/AdminVendorsPage.jsx';
 import ProtectedRoute from './auth/ProtectedRoute.jsx';
 import Layout from './components/Layout.jsx';
 import AccountPage from './pages/AccountPage.jsx';
@@ -48,6 +57,20 @@ export default function App() {
           <Route path="vendor/products/:productId" element={<VendorProductFormPage />} />
           <Route path="vendor/orders" element={<VendorOrdersPage />} />
           <Route path="vendor/settlements" element={<VendorSettlementsPage />} />
+        </Route>
+        {/* UX only: the API enforces the admin role on every /admin/* request. */}
+        <Route element={<ProtectedRoute roles={['admin']} />}>
+          <Route path="admin" element={<AdminLayout />}>
+            <Route index element={<Navigate to="analytics" replace />} />
+            <Route path="analytics" element={<AdminAnalyticsPage />} />
+            <Route path="orders" element={<AdminOrdersPage />} />
+            <Route path="orders/:orderId" element={<AdminOrderPage />} />
+            <Route path="vendors" element={<AdminVendorsPage />} />
+            <Route path="products" element={<AdminProductsPage />} />
+            <Route path="reviews" element={<AdminReviewsPage />} />
+            <Route path="coupons" element={<AdminCouponsPage />} />
+            <Route path="settlements" element={<AdminSettlementsPage />} />
+          </Route>
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>

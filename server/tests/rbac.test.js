@@ -58,6 +58,16 @@ describe('route table', () => {
         'DELETE /api/v1/reviews/:reviewId',
         'PATCH /api/v1/admin/reviews/:reviewId/status',
         'GET /api/v1/orders/:orderId/invoice',
+        // Phase 8
+        'GET /api/v1/admin/products',
+        'PATCH /api/v1/admin/products/:productId/status',
+        'GET /api/v1/admin/reviews',
+        'GET /api/v1/admin/orders',
+        'GET /api/v1/admin/orders/:orderId',
+        'GET /api/v1/admin/analytics/overview',
+        'GET /api/v1/admin/analytics/sales-timeseries',
+        'GET /api/v1/admin/analytics/top-vendors',
+        'GET /api/v1/admin/analytics/top-products',
       ]),
     );
   });

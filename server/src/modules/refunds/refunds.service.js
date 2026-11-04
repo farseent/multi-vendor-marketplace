@@ -102,14 +102,16 @@ export function createRefundsService({ paymentProvider, audit, logger }) {
     // The $inc above locked the sub-order for this transaction, so these reads cannot go stale.
     const prior = await Refund.find(
       { subOrderId, status: { $in: ['initiated', 'processed'] } },
-      'commissionReversedPaise',
+      'commissionReversedPaise vendorDebitPaise',
     ).session(session);
     const split = splitRefund({
       refundPaise: amountPaise,
       totalPaise: sub.customerTotalPaise,
       commissionPaise: sub.commission.amountPaise,
+      vendorPayoutPaise: sub.vendorPayoutPaise,
       refundedBeforePaise: sub.refundedPaise - amountPaise,
       commissionReversedBeforePaise: prior.reduce((n, r) => n + r.commissionReversedPaise, 0),
+      vendorDebitBeforePaise: prior.reduce((n, r) => n + r.vendorDebitPaise, 0),
     });
     if (split.vendorDebitPaise > 0 && split.vendorDebitPaise < MIN_REVERSAL_PAISE) {
       throw new AppError('VALIDATION_ERROR', 422, 'Invalid request', {

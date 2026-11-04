@@ -49,6 +49,7 @@ export default function Layout() {
               <NavLink to="/vendor/settlements">Payouts</NavLink>
             </>
           )}
+          {user?.role === 'admin' && <NavLink to="/admin">Admin</NavLink>}
           {status === 'authenticated' ? (
             <NavLink to="/account">{user.name}</NavLink>
           ) : (
