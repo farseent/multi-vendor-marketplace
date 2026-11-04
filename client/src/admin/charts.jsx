@@ -23,7 +23,14 @@ export function SalesChart({ points }) {
         aria-label={`Sales per ${points.length > 31 ? 'period' : 'day'} from ${first} to ${last}, highest ${formatINR(max)}`}
       >
         <line x1="24" y1="24" x2="696" y2="24" className="stroke-slate-200" strokeDasharray="4 4" />
-        <line x1="24" y1="110" x2="696" y2="110" className="stroke-slate-200" strokeDasharray="4 4" />
+        <line
+          x1="24"
+          y1="110"
+          x2="696"
+          y2="110"
+          className="stroke-slate-200"
+          strokeDasharray="4 4"
+        />
         <line x1="24" y1="196" x2="696" y2="196" className="stroke-slate-300" />
         {bars.map((b) => (
           <rect
@@ -38,10 +45,18 @@ export function SalesChart({ points }) {
             <title>{`${b.bucket}: ${formatINR(b.value)}`}</title>
           </rect>
         ))}
-        <text x="24" y="14" className="fill-slate-600 stroke-white stroke-[3px] text-[11px] [paint-order:stroke]">
+        <text
+          x="24"
+          y="14"
+          className="fill-slate-600 stroke-white stroke-[3px] text-[11px] [paint-order:stroke]"
+        >
           {formatINR(max)}
         </text>
-        <text x="24" y="102" className="fill-slate-600 stroke-white stroke-[3px] text-[11px] [paint-order:stroke]">
+        <text
+          x="24"
+          y="102"
+          className="fill-slate-600 stroke-white stroke-[3px] text-[11px] [paint-order:stroke]"
+        >
           {formatINR(Math.round(max / 2))}
         </text>
         <text x="24" y="213" className="fill-slate-500 text-[11px]">
@@ -52,7 +67,9 @@ export function SalesChart({ points }) {
         </text>
       </svg>
       <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50/60 p-3 text-sm">
-        <summary className="cursor-pointer font-medium text-slate-700">Show the figures as a table</summary>
+        <summary className="cursor-pointer font-medium text-slate-700">
+          Show the figures as a table
+        </summary>
         <div className="mt-3">
           <Table label="Sales figures" className="max-h-80 overflow-y-auto">
             <THead>

@@ -1,7 +1,19 @@
 import { useState } from 'react';
 import { FormError, useSubmit } from '../auth/AuthForm.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { Alert, Badge, Button, Card, CardHeader, Container, Field, Icon, Input, LinkButton, PageHeader } from '../components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  Container,
+  Field,
+  Icon,
+  Input,
+  LinkButton,
+  PageHeader,
+} from '../components/ui';
 import { apiFetch } from '../lib/api.js';
 
 const DASHBOARDS = {
@@ -57,12 +69,23 @@ export default function AccountPage() {
         </Card>
 
         <Card>
-          <CardHeader title="Change password" description="Your other devices are logged out when you change it." />
+          <CardHeader
+            title="Change password"
+            description="Your other devices are logged out when you change it."
+          />
           <form className="max-w-md space-y-4" onSubmit={onSubmit}>
             <Field label="Current password">
-              <Input name="currentPassword" type="password" autoComplete="current-password" required />
+              <Input
+                name="currentPassword"
+                type="password"
+                autoComplete="current-password"
+                required
+              />
             </Field>
-            <Field label="New password" hint="10-72 characters, with at least one letter and one number.">
+            <Field
+              label="New password"
+              hint="10-72 characters, with at least one letter and one number."
+            >
               <Input
                 name="newPassword"
                 type="password"
@@ -73,7 +96,9 @@ export default function AccountPage() {
               />
             </Field>
             <FormError error={error} />
-            {changed && <Alert tone="success">Password changed. Your other devices were logged out.</Alert>}
+            {changed && (
+              <Alert tone="success">Password changed. Your other devices were logged out.</Alert>
+            )}
             <Button type="submit" loading={submitting}>
               Change password
             </Button>

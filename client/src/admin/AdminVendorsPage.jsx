@@ -1,6 +1,24 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, Button, Card, ConfirmDialog, EmptyState, Field, Input, PageHeader, PageLoading, Pagination, Select, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  PageLoading,
+  Pagination,
+  Select,
+  StatusBadge,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+} from '../components/ui';
 import {
   adminErrorMessage,
   adminKey,
@@ -14,7 +32,11 @@ import { useAdminAction } from './hooks.js';
 
 const STATUSES = ['', 'pending', 'approved', 'rejected', 'suspended'];
 const VERBS = { approved: 'Approve', rejected: 'Reject', suspended: 'Suspend' };
-const VERB_VARIANT = { approved: 'primary', rejected: 'danger-outline', suspended: 'danger-outline' };
+const VERB_VARIANT = {
+  approved: 'primary',
+  rejected: 'danger-outline',
+  suspended: 'danger-outline',
+};
 
 function CommissionForm({ vendor, onSave, disabled }) {
   const [text, setText] = useState(bpsToPercent(vendor.commissionRateBps));
@@ -65,10 +87,16 @@ export default function AdminVendorsPage() {
 
   return (
     <>
-      <PageHeader title="Vendors" description="Approve shops and set the commission each one pays." />
+      <PageHeader
+        title="Vendors"
+        description="Approve shops and set the commission each one pays."
+      />
       <Card className="mb-6">
         <Field label="Status" className="max-w-xs">
-          <Select value={filters.status} onChange={(e) => setFilters({ status: e.target.value, page: 1 })}>
+          <Select
+            value={filters.status}
+            onChange={(e) => setFilters({ status: e.target.value, page: 1 })}
+          >
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {s || 'All'}
@@ -77,7 +105,11 @@ export default function AdminVendorsPage() {
           </Select>
         </Field>
       </Card>
-      {problem && <Alert tone="danger" className="mb-4">{adminErrorMessage(problem)}</Alert>}
+      {problem && (
+        <Alert tone="danger" className="mb-4">
+          {adminErrorMessage(problem)}
+        </Alert>
+      )}
       {isPending && <PageLoading />}
       {data?.items.length === 0 && <EmptyState icon="store" title="No shops match" />}
       {data?.items.length > 0 && (

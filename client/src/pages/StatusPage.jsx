@@ -1,5 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Card, Container, Icon, PageHeader, PageLoading, StatusBadge } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  Container,
+  Icon,
+  PageHeader,
+  PageLoading,
+  StatusBadge,
+} from '../components/ui';
 import { cx } from '../components/ui/classes.js';
 import { apiFetch } from '../lib/api.js';
 
@@ -30,7 +39,8 @@ export default function StatusPage() {
       {isPending && <PageLoading label="Checking…" />}
       {error && !report && (
         <Alert tone="danger">
-          Cannot reach the API. Start the backend with <code className="font-mono">npm run dev:server</code>.
+          Cannot reach the API. Start the backend with{' '}
+          <code className="font-mono">npm run dev:server</code>.
         </Alert>
       )}
       {report && (
@@ -45,7 +55,10 @@ export default function StatusPage() {
                 <li key={name} className="flex flex-wrap items-center gap-3 px-5 py-4">
                   <span
                     aria-hidden="true"
-                    className={cx('size-2.5 rounded-full', c.status === 'up' ? 'bg-emerald-500' : 'bg-red-500')}
+                    className={cx(
+                      'size-2.5 rounded-full',
+                      c.status === 'up' ? 'bg-emerald-500' : 'bg-red-500',
+                    )}
                   />
                   <span className="font-medium text-slate-900">{LABELS[name] ?? name}</span>
                   <span className="text-sm text-slate-500">

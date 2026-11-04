@@ -1,7 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Alert, Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, Icon, LinkButton, PageHeader, PageLoading, Pagination, Select, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  Field,
+  Icon,
+  LinkButton,
+  PageHeader,
+  PageLoading,
+  Pagination,
+  Select,
+  StatusBadge,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+} from '../components/ui';
 import { apiFetch } from '../lib/api.js';
 import { formatINR } from '../lib/money.js';
 
@@ -12,7 +32,11 @@ function Thumb({ product }) {
   const url = product.images?.[0]?.url;
   return (
     <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-100 text-slate-300">
-      {url ? <img src={url} alt="" className="size-full object-cover" /> : <Icon name="image" className="size-5" />}
+      {url ? (
+        <img src={url} alt="" className="size-full object-cover" />
+      ) : (
+        <Icon name="image" className="size-5" />
+      )}
     </div>
   );
 }
@@ -85,13 +109,21 @@ export default function VendorProductsPage() {
 
       {isPending && <PageLoading />}
       {error && <ErrorState message={error.message} />}
-      {archive.error && <Alert tone="danger" className="mb-4">{archive.error.message}</Alert>}
+      {archive.error && (
+        <Alert tone="danger" className="mb-4">
+          {archive.error.message}
+        </Alert>
+      )}
       {data && products.length === 0 && (
         <EmptyState
           icon="package"
           title="No products yet"
           description="Add your first product to start selling."
-          action={<LinkButton to="/vendor/products/new" icon="plus">Add product</LinkButton>}
+          action={
+            <LinkButton to="/vendor/products/new" icon="plus">
+              Add product
+            </LinkButton>
+          }
         />
       )}
 
@@ -104,7 +136,10 @@ export default function VendorProductsPage() {
                 <Card className="flex gap-3 p-4!">
                   <Thumb product={p} />
                   <div className="min-w-0 flex-1">
-                    <Link to={`/vendor/products/${p.id}`} className="line-clamp-2 font-medium text-slate-900 hover:text-brand-700">
+                    <Link
+                      to={`/vendor/products/${p.id}`}
+                      className="line-clamp-2 font-medium text-slate-900 hover:text-brand-700"
+                    >
                       {p.title}
                     </Link>
                     <p className="tabular mt-0.5 text-sm text-slate-600">
@@ -113,12 +148,20 @@ export default function VendorProductsPage() {
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <StatusBadge status={p.status} />
                       {p.status === 'active' && (
-                        <Link to={`/products/${p.slug}`} className="text-sm font-medium text-brand-600">
+                        <Link
+                          to={`/products/${p.slug}`}
+                          className="text-sm font-medium text-brand-600"
+                        >
                           View
                         </Link>
                       )}
                       {canArchive(p) && (
-                        <Button variant="danger-outline" size="sm" disabled={archive.isPending} onClick={() => setToArchive(p)}>
+                        <Button
+                          variant="danger-outline"
+                          size="sm"
+                          disabled={archive.isPending}
+                          onClick={() => setToArchive(p)}
+                        >
                           Archive
                         </Button>
                       )}
@@ -145,7 +188,10 @@ export default function VendorProductsPage() {
                     <Td>
                       <div className="flex items-center gap-3">
                         <Thumb product={p} />
-                        <Link to={`/vendor/products/${p.id}`} className="font-medium text-slate-900 hover:text-brand-700">
+                        <Link
+                          to={`/vendor/products/${p.id}`}
+                          className="font-medium text-slate-900 hover:text-brand-700"
+                        >
                           {p.title}
                         </Link>
                       </div>
@@ -158,12 +204,20 @@ export default function VendorProductsPage() {
                     <Td>
                       <div className="flex items-center justify-end gap-2">
                         {p.status === 'active' && (
-                          <Link to={`/products/${p.slug}`} className="text-sm font-medium text-brand-600 hover:underline">
+                          <Link
+                            to={`/products/${p.slug}`}
+                            className="text-sm font-medium text-brand-600 hover:underline"
+                          >
                             View
                           </Link>
                         )}
                         {canArchive(p) && (
-                          <Button variant="danger-outline" size="sm" disabled={archive.isPending} onClick={() => setToArchive(p)}>
+                          <Button
+                            variant="danger-outline"
+                            size="sm"
+                            disabled={archive.isPending}
+                            onClick={() => setToArchive(p)}
+                          >
                             Archive
                           </Button>
                         )}
@@ -181,7 +235,9 @@ export default function VendorProductsPage() {
       <ConfirmDialog
         open={Boolean(toArchive)}
         title="Archive this product?"
-        message={toArchive ? `\u201c${toArchive.title}\u201d will no longer be shown to customers.` : ''}
+        message={
+          toArchive ? `\u201c${toArchive.title}\u201d will no longer be shown to customers.` : ''
+        }
         confirmLabel="Archive"
         pending={archive.isPending}
         onConfirm={() => archive.mutate(toArchive.id)}

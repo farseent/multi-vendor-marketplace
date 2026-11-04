@@ -1,7 +1,25 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Alert, Button, Card, EmptyState, Field, Icon, Input, PageHeader, PageLoading, Pagination, Select, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Icon,
+  Input,
+  PageHeader,
+  PageLoading,
+  Pagination,
+  Select,
+  StatusBadge,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+} from '../components/ui';
 import { adminErrorMessage, adminKey, adminList } from '../lib/admin.js';
 import { formatINR } from '../lib/money.js';
 
@@ -49,7 +67,12 @@ export default function AdminOrdersPage() {
           }}
         >
           <Field label="Order number">
-            <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="MP-2026…" maxLength={100} />
+            <Input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="MP-2026…"
+              maxLength={100}
+            />
           </Field>
           {select(
             'Order status',
@@ -66,9 +89,15 @@ export default function AdminOrdersPage() {
           </Button>
         </form>
       </Card>
-      {error && <Alert tone="danger" className="mb-4">{adminErrorMessage(error)}</Alert>}
+      {error && (
+        <Alert tone="danger" className="mb-4">
+          {adminErrorMessage(error)}
+        </Alert>
+      )}
       {isPending && <PageLoading />}
-      {data?.items.length === 0 && <EmptyState icon="receipt" title="No orders match" description="Try different filters." />}
+      {data?.items.length === 0 && (
+        <EmptyState icon="receipt" title="No orders match" description="Try different filters." />
+      )}
       {data?.items.length > 0 && (
         <Table label="Orders">
           <THead>
@@ -89,7 +118,9 @@ export default function AdminOrdersPage() {
                   </Link>
                 </Td>
                 <Td>{o.customer?.email}</Td>
-                <Td className="whitespace-nowrap">{new Date(o.placedAt ?? o.createdAt).toLocaleString()}</Td>
+                <Td className="whitespace-nowrap">
+                  {new Date(o.placedAt ?? o.createdAt).toLocaleString()}
+                </Td>
                 <Td>
                   <StatusBadge status={o.status} />
                 </Td>

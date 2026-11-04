@@ -3,7 +3,11 @@ import { cx } from './classes.js';
 
 const TONES = {
   info: ['border-sky-200 bg-sky-50 text-sky-900', 'info', 'text-sky-600'],
-  success: ['border-emerald-200 bg-emerald-50 text-emerald-900', 'check-circle', 'text-emerald-600'],
+  success: [
+    'border-emerald-200 bg-emerald-50 text-emerald-900',
+    'check-circle',
+    'text-emerald-600',
+  ],
   warning: ['border-amber-200 bg-amber-50 text-amber-900', 'alert', 'text-amber-600'],
   danger: ['border-red-200 bg-red-50 text-red-800', 'alert-circle', 'text-red-600'],
 };

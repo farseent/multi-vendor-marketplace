@@ -74,7 +74,12 @@ export default function AddToCart({ product }) {
               ))}
             </Select>
           </label>
-          <Button type="submit" size="lg" className="min-w-44 flex-1 sm:flex-none" loading={add.isPending}>
+          <Button
+            type="submit"
+            size="lg"
+            className="min-w-44 flex-1 sm:flex-none"
+            loading={add.isPending}
+          >
             <Icon name="cart" className="size-5" />
             {add.isPending ? 'Adding…' : 'Add to cart'}
           </Button>

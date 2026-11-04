@@ -15,7 +15,20 @@ import {
   updateReview,
   validateReviewForm,
 } from '../lib/reviews.js';
-import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, Pagination, PageLoading, Stars, Textarea } from './ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  Field,
+  Input,
+  Pagination,
+  PageLoading,
+  Stars,
+  Textarea,
+} from './ui';
 import { linkClasses } from './ui/classes.js';
 
 const formatDate = (value) => new Date(value).toLocaleDateString('en-IN', { dateStyle: 'medium' });
@@ -65,7 +78,12 @@ function ReviewForm({ review, onSubmit, onCancel, pending, serverError }) {
         <Input value={title} maxLength={100} onChange={(e) => setTitle(e.target.value)} />
       </Field>
       <Field label="Your review" error={errors.body}>
-        <Textarea rows={5} value={body} maxLength={2000} onChange={(e) => setBody(e.target.value)} />
+        <Textarea
+          rows={5}
+          value={body}
+          maxLength={2000}
+          onChange={(e) => setBody(e.target.value)}
+        />
       </Field>
       {serverError && <Alert tone="danger">{reviewErrorMessage(serverError)}</Alert>}
       <div className="flex flex-wrap gap-2">
@@ -177,7 +195,9 @@ function MyReview({ productId, slug }) {
               </Button>
             </div>
           ) : (
-            <p className="mt-3 text-xs text-slate-500">Reviews can be changed for 30 days after posting.</p>
+            <p className="mt-3 text-xs text-slate-500">
+              Reviews can be changed for 30 days after posting.
+            </p>
           )}
           <ConfirmDialog
             open={confirmDelete}
@@ -205,7 +225,11 @@ export default function ReviewsSection({ product }) {
   });
 
   return (
-    <section id="reviews" className="mt-14 max-w-3xl border-t border-slate-200 pt-10" aria-labelledby="reviews-heading">
+    <section
+      id="reviews"
+      className="mt-14 max-w-3xl border-t border-slate-200 pt-10"
+      aria-labelledby="reviews-heading"
+    >
       <h2 id="reviews-heading" className="text-xl font-semibold tracking-tight text-slate-900">
         Customer reviews
       </h2>
@@ -218,7 +242,9 @@ export default function ReviewsSection({ product }) {
             <Stars rating={product.ratingAvg.toFixed(1)} className="[&_svg]:size-5" />
           </>
         )}
-        <p className="text-sm text-slate-600">{ratingSummaryText(product.ratingAvg, product.ratingCount)}</p>
+        <p className="text-sm text-slate-600">
+          {ratingSummaryText(product.ratingAvg, product.ratingCount)}
+        </p>
       </div>
 
       <div className="mt-6 space-y-4">
@@ -239,7 +265,11 @@ export default function ReviewsSection({ product }) {
         {isPending && <PageLoading label="Loading reviews…" className="py-8" />}
         {error && <Alert tone="danger">Reviews could not be loaded.</Alert>}
         {data && data.items.length === 0 && (
-          <EmptyState icon="message" title="No reviews yet" description="Be the first to share what you think once you have received this product." />
+          <EmptyState
+            icon="message"
+            title="No reviews yet"
+            description="Be the first to share what you think once you have received this product."
+          />
         )}
         {data && data.items.length > 0 && (
           <>
@@ -248,9 +278,13 @@ export default function ReviewsSection({ product }) {
                 <li key={review.id} className="p-5">
                   <div className="flex flex-wrap items-center gap-2">
                     <Stars rating={review.rating} />
-                    {review.title && <strong className="text-sm text-slate-900">{review.title}</strong>}
+                    {review.title && (
+                      <strong className="text-sm text-slate-900">{review.title}</strong>
+                    )}
                   </div>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{review.body}</p>
+                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">
+                    {review.body}
+                  </p>
                   <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                     <span className="font-medium text-slate-700">{review.authorName}</span>
                     <span>{formatDate(review.createdAt)}</span>

@@ -1,7 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Alert, Button, Card, ConfirmDialog, Container, EmptyState, ErrorState, Field, Icon, Input, LinkButton, OrderTotals, PageHeader, PageLoading, Select } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  ConfirmDialog,
+  Container,
+  EmptyState,
+  ErrorState,
+  Field,
+  Icon,
+  Input,
+  LinkButton,
+  OrderTotals,
+  PageHeader,
+  PageLoading,
+  Select,
+} from '../components/ui';
 import { cx, linkClasses } from '../components/ui/classes.js';
 import { apiFetch } from '../lib/api.js';
 import { CART_KEY, couponReasonMessage, fetchCart, lineNotice, MAX_QUANTITY } from '../lib/cart.js';
@@ -55,7 +71,12 @@ export default function CartPage() {
         title="Your cart"
         description={`${cart.itemCount} ${cart.itemCount === 1 ? 'item' : 'items'}`}
         actions={
-          <Button variant="secondary" size="sm" disabled={change.isPending} onClick={() => setConfirmEmpty(true)}>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={change.isPending}
+            onClick={() => setConfirmEmpty(true)}
+          >
             <Icon name="trash" className="size-4" />
             Empty cart
           </Button>
@@ -96,16 +117,25 @@ export default function CartPage() {
                             {line.title}
                           </Link>
                         ) : (
-                          <span className="font-medium text-slate-500">{line.title ?? 'Unavailable product'}</span>
+                          <span className="font-medium text-slate-500">
+                            {line.title ?? 'Unavailable product'}
+                          </span>
                         )}
-                        {line.shop && <p className="text-xs text-slate-500">Sold by {line.shop.name}</p>}
+                        {line.shop && (
+                          <p className="text-xs text-slate-500">Sold by {line.shop.name}</p>
+                        )}
                       </div>
                       {!unavailable && (
-                        <p className="tabular font-semibold text-slate-900">{formatINR(line.lineNetPaise)}</p>
+                        <p className="tabular font-semibold text-slate-900">
+                          {formatINR(line.lineNetPaise)}
+                        </p>
                       )}
                     </div>
                     {notice && (
-                      <p role="status" className="mt-2 flex items-start gap-1.5 text-xs font-medium text-red-700">
+                      <p
+                        role="status"
+                        className="mt-2 flex items-start gap-1.5 text-xs font-medium text-red-700"
+                      >
                         <Icon name="alert-circle" className="mt-px size-4" />
                         {notice}
                       </p>
@@ -164,7 +194,8 @@ export default function CartPage() {
             className="space-y-2"
             onSubmit={(event) => {
               event.preventDefault();
-              if (code.trim()) run('POST', '/cart/coupon', { code }, { onSuccess: () => setCode('') });
+              if (code.trim())
+                run('POST', '/cart/coupon', { code }, { onSuccess: () => setCode('') });
             }}
           >
             <Field label="Coupon code">
@@ -176,7 +207,11 @@ export default function CartPage() {
                   autoComplete="off"
                   aria-invalid={Boolean(couponMessage)}
                 />
-                <Button type="submit" variant="secondary" disabled={change.isPending || !code.trim()}>
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  disabled={change.isPending || !code.trim()}
+                >
                   Apply
                 </Button>
               </div>
@@ -205,7 +240,8 @@ export default function CartPage() {
             <Alert tone="danger">
               <span className="flex flex-wrap items-center justify-between gap-2">
                 <span>
-                  Coupon <strong>{cart.couponError.code}</strong>: {couponReasonMessage(cart.couponError.reason)}
+                  Coupon <strong>{cart.couponError.code}</strong>:{' '}
+                  {couponReasonMessage(cart.couponError.reason)}
                 </span>
                 <button
                   type="button"
@@ -222,12 +258,16 @@ export default function CartPage() {
           <OrderTotals
             rows={[
               ['Subtotal', formatINR(cart.subtotalPaise)],
-              ...(cart.discountPaise > 0 ? [['Discount', `\u2212${formatINR(cart.discountPaise)}`, 'success']] : []),
+              ...(cart.discountPaise > 0
+                ? [['Discount', `\u2212${formatINR(cart.discountPaise)}`, 'success']]
+                : []),
               ['Shipping', 'Free'],
             ]}
             total={formatINR(cart.totalPaise)}
           />
-          <p className="text-xs text-slate-500">Prices and stock are confirmed again when you check out.</p>
+          <p className="text-xs text-slate-500">
+            Prices and stock are confirmed again when you check out.
+          </p>
           {cart.hasIssues ? (
             <div className="space-y-2">
               <Button size="lg" className="w-full" disabled>
@@ -249,7 +289,9 @@ export default function CartPage() {
         message="All items will be removed from your cart."
         confirmLabel="Empty cart"
         pending={change.isPending}
-        onConfirm={() => run('DELETE', '/cart', undefined, { onSettled: () => setConfirmEmpty(false) })}
+        onConfirm={() =>
+          run('DELETE', '/cart', undefined, { onSettled: () => setConfirmEmpty(false) })
+        }
         onCancel={() => setConfirmEmpty(false)}
       />
     </Container>

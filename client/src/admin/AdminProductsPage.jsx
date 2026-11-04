@@ -1,6 +1,25 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, Button, Card, ConfirmDialog, EmptyState, Field, Icon, Input, PageHeader, PageLoading, Pagination, Select, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  Field,
+  Icon,
+  Input,
+  PageHeader,
+  PageLoading,
+  Pagination,
+  Select,
+  StatusBadge,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+} from '../components/ui';
 import { adminErrorMessage, adminKey, adminList, adminSend } from '../lib/admin.js';
 import { formatINR } from '../lib/money.js';
 import { useAdminAction } from './hooks.js';
@@ -24,7 +43,10 @@ export default function AdminProductsPage() {
 
   return (
     <>
-      <PageHeader title="Products" description="Every product of every shop. Suspend one to remove it from the shop and search." />
+      <PageHeader
+        title="Products"
+        description="Every product of every shop. Suspend one to remove it from the shop and search."
+      />
       <Card className="mb-6">
         <form
           className="grid gap-4 sm:grid-cols-[14rem_1fr_auto] sm:items-end"
@@ -34,7 +56,10 @@ export default function AdminProductsPage() {
           }}
         >
           <Field label="Status">
-            <Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value, page: 1 })}>
+            <Select
+              value={filters.status}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value, page: 1 })}
+            >
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {s || 'All'}
@@ -51,7 +76,11 @@ export default function AdminProductsPage() {
           </Button>
         </form>
       </Card>
-      {problem && <Alert tone="danger" className="mb-4">{adminErrorMessage(problem)}</Alert>}
+      {problem && (
+        <Alert tone="danger" className="mb-4">
+          {adminErrorMessage(problem)}
+        </Alert>
+      )}
       {isPending && <PageLoading />}
       {data?.items.length === 0 && <EmptyState icon="package" title="No products match" />}
       {data?.items.length > 0 && (
@@ -67,7 +96,9 @@ export default function AdminProductsPage() {
           <TBody>
             {data.items.map((p) => (
               <tr key={p.id}>
-                <Td header className="min-w-48">{p.title}</Td>
+                <Td header className="min-w-48">
+                  {p.title}
+                </Td>
                 <Td>{p.shop?.name}</Td>
                 <Td>
                   <StatusBadge status={p.status} />
@@ -86,7 +117,12 @@ export default function AdminProductsPage() {
                       Restore to draft
                     </Button>
                   ) : (
-                    <Button variant="danger-outline" size="sm" disabled={setStatus.isPending} onClick={() => setToSuspend(p)}>
+                    <Button
+                      variant="danger-outline"
+                      size="sm"
+                      disabled={setStatus.isPending}
+                      onClick={() => setToSuspend(p)}
+                    >
                       Suspend
                     </Button>
                   )}
@@ -100,11 +136,16 @@ export default function AdminProductsPage() {
       <ConfirmDialog
         open={Boolean(toSuspend)}
         title="Suspend this product?"
-        message={toSuspend ? `\u201c${toSuspend.title}\u201d disappears from the shop and search.` : ''}
+        message={
+          toSuspend ? `\u201c${toSuspend.title}\u201d disappears from the shop and search.` : ''
+        }
         confirmLabel="Suspend"
         pending={setStatus.isPending}
         onConfirm={() =>
-          setStatus.mutate({ id: toSuspend.id, status: 'suspended' }, { onSettled: () => setToSuspend(null) })
+          setStatus.mutate(
+            { id: toSuspend.id, status: 'suspended' },
+            { onSettled: () => setToSuspend(null) },
+          )
         }
         onCancel={() => setToSuspend(null)}
       />

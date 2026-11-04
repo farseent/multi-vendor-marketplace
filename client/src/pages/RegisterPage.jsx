@@ -8,13 +8,21 @@ import { linkClasses } from '../components/ui/classes.js';
 const CUSTOMER_POINTS = [
   ['cart', 'One cart, many sellers', 'Buy from several shops and pay once at checkout.'],
   ['package', 'Free shipping', 'Shipping is free on every order.'],
-  ['shield', 'Refunds when a seller cancels', 'Cancel an unshipped part of your order and get your money back.'],
+  [
+    'shield',
+    'Refunds when a seller cancels',
+    'Cancel an unshipped part of your order and get your money back.',
+  ],
 ];
 
 const VENDOR_POINTS = [
   ['store', 'Open your shop', 'Create a shop profile and start preparing products right away.'],
   ['package', 'Manage products and stock', 'Add listings with photos, prices and stock levels.'],
-  ['wallet', 'Get paid after delivery', 'Payouts are released once an order\u2019s 7-day return window ends.'],
+  [
+    'wallet',
+    'Get paid after delivery',
+    'Payouts are released once an order\u2019s 7-day return window ends.',
+  ],
 ];
 
 /** One page for both sign-ups; `vendor` switches the endpoint (shop profile comes in Phase 2). */

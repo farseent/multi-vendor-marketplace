@@ -31,7 +31,13 @@ const BUTTON_SIZES = {
 /** Class string for anything that should look like a button (a <button> or a router <Link>). */
 /** `wrap` lets a long label break onto two lines instead of forcing the button wider. */
 export const buttonClasses = ({ variant = 'primary', size = 'md', wrap = false, className } = {}) =>
-  cx(BUTTON_BASE, !wrap && 'whitespace-nowrap', BUTTON_VARIANTS[variant], BUTTON_SIZES[size], className);
+  cx(
+    BUTTON_BASE,
+    !wrap && 'whitespace-nowrap',
+    BUTTON_VARIANTS[variant],
+    BUTTON_SIZES[size],
+    className,
+  );
 
 /** Responsive product grid: two columns on phones, up to four on wide screens. */
 export const productGridClasses = 'grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-4';

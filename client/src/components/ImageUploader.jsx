@@ -40,7 +40,11 @@ export default function ImageUploader({ images, onChange }) {
           <li key={img.key} className="group relative">
             <div className="aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
               {img.url ? (
-                <img src={img.url} alt={img.alt ?? `Product image ${index + 1}`} className="size-full object-cover" />
+                <img
+                  src={img.url}
+                  alt={img.alt ?? `Product image ${index + 1}`}
+                  className="size-full object-cover"
+                />
               ) : (
                 <span className="grid size-full place-items-center break-all p-2 text-center text-xs text-slate-500">
                   {img.key}
@@ -71,7 +75,9 @@ export default function ImageUploader({ images, onChange }) {
               )}
             >
               <Icon name="upload" className="size-6 text-slate-400" />
-              <span className="font-medium text-slate-700">{busy ? 'Uploading…' : 'Add images'}</span>
+              <span className="font-medium text-slate-700">
+                {busy ? 'Uploading…' : 'Add images'}
+              </span>
               <span>JPEG, PNG or WebP, up to 5 MB each</span>
               <input
                 type="file"

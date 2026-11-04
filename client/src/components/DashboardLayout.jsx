@@ -80,7 +80,12 @@ export default function DashboardLayout({ title, links, tone = 'light', maxWidth
               <Icon name="store" className="size-4.5" />
             </span>
             <span className="leading-tight">
-              <span className={cx('block text-sm font-semibold', dark ? 'text-white' : 'text-slate-900')}>
+              <span
+                className={cx(
+                  'block text-sm font-semibold',
+                  dark ? 'text-white' : 'text-slate-900',
+                )}
+              >
                 {title}
               </span>
               <span className={cx('block text-xs', muted)}>Marketplace</span>
@@ -121,7 +126,12 @@ export default function DashboardLayout({ title, links, tone = 'light', maxWidth
               {user?.name?.[0] ?? '?'}
             </span>
             <span className="min-w-0 leading-tight">
-              <span className={cx('block truncate text-sm font-medium', dark ? 'text-white' : 'text-slate-900')}>
+              <span
+                className={cx(
+                  'block truncate text-sm font-medium',
+                  dark ? 'text-white' : 'text-slate-900',
+                )}
+              >
                 {user?.name}
               </span>
               <span className={cx('block truncate text-xs capitalize', muted)}>{user?.role}</span>

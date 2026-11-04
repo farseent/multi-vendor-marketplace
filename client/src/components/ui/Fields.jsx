@@ -15,7 +15,12 @@ export const Textarea = ({ className, ...props }) => (
 );
 
 export const Checkbox = ({ label, className, ...props }) => (
-  <label className={cx('flex min-h-10 cursor-pointer items-center gap-2.5 text-sm text-slate-700', className)}>
+  <label
+    className={cx(
+      'flex min-h-10 cursor-pointer items-center gap-2.5 text-sm text-slate-700',
+      className,
+    )}
+  >
     <input
       type="checkbox"
       className="size-4 rounded border-slate-300 text-brand-600 accent-brand-600"

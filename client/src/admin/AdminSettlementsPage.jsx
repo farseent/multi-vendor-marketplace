@@ -1,6 +1,25 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, Button, Card, CardHeader, ConfirmDialog, EmptyState, Field, Icon, PageHeader, PageLoading, Pagination, Select, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  CardHeader,
+  ConfirmDialog,
+  EmptyState,
+  Field,
+  Icon,
+  PageHeader,
+  PageLoading,
+  Pagination,
+  Select,
+  StatusBadge,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+} from '../components/ui';
 import {
   adminErrorMessage,
   adminKey,
@@ -35,9 +54,14 @@ function Reconciliation() {
       {data?.items.length === 0 && <p className="text-sm text-slate-500">No report yet.</p>}
       <div className="space-y-2">
         {data?.items.map((r) => (
-          <details key={r.id} className="group rounded-lg border border-slate-200 bg-slate-50/60 p-3 text-sm">
+          <details
+            key={r.id}
+            className="group rounded-lg border border-slate-200 bg-slate-50/60 p-3 text-sm"
+          >
             <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="font-medium text-slate-900">{new Date(r.runAt).toLocaleString()}</span>
+              <span className="font-medium text-slate-900">
+                {new Date(r.runAt).toLocaleString()}
+              </span>
               <StatusBadge status={r.status} />
               <span className="text-slate-500">
                 {r.totals.settlementsChecked} checked, {r.totals.mismatchCount} mismatches
@@ -80,7 +104,10 @@ export default function AdminSettlementsPage() {
       <PageHeader title="Settlements" description="Vendor payouts across the marketplace." />
       <Card className="mb-6">
         <Field label="Status" className="max-w-xs">
-          <Select value={filters.status} onChange={(e) => setFilters({ status: e.target.value, page: 1 })}>
+          <Select
+            value={filters.status}
+            onChange={(e) => setFilters({ status: e.target.value, page: 1 })}
+          >
             <option value="">All</option>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -90,7 +117,11 @@ export default function AdminSettlementsPage() {
           </Select>
         </Field>
       </Card>
-      {problem && <Alert tone="danger" className="mb-4">{adminErrorMessage(problem)}</Alert>}
+      {problem && (
+        <Alert tone="danger" className="mb-4">
+          {adminErrorMessage(problem)}
+        </Alert>
+      )}
       {isPending && <PageLoading />}
       {data?.items.length === 0 && <EmptyState icon="wallet" title="No settlements match" />}
       {data?.items.length > 0 && (
@@ -111,14 +142,27 @@ export default function AdminSettlementsPage() {
                 <Td num>{formatINR(s.grossPaise)}</Td>
                 <Td num>{formatINR(s.commissionPaise)}</Td>
                 <Td num>{s.refundAdjustmentPaise ? formatINR(s.refundAdjustmentPaise) : '—'}</Td>
-                <Td num className="font-semibold text-slate-900">{formatINR(s.netPayoutPaise)}</Td>
+                <Td num className="font-semibold text-slate-900">
+                  {formatINR(s.netPayoutPaise)}
+                </Td>
                 <Td>
-                  <StatusBadge status={s.status} label={settlementStatusText(s.status)} className="capitalize" />
-                  {s.failureReason && <p className="mt-1 text-xs text-slate-500">{s.failureReason}</p>}
+                  <StatusBadge
+                    status={s.status}
+                    label={settlementStatusText(s.status)}
+                    className="capitalize"
+                  />
+                  {s.failureReason && (
+                    <p className="mt-1 text-xs text-slate-500">{s.failureReason}</p>
+                  )}
                 </Td>
                 <Td>
                   {s.status === 'pending_release' && (
-                    <Button variant="secondary" size="sm" disabled={release.isPending} onClick={() => setToRelease(s.id)}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={release.isPending}
+                      onClick={() => setToRelease(s.id)}
+                    >
                       Release early
                     </Button>
                   )}

@@ -9,7 +9,12 @@ export default function Pagination({ meta, onPage, label = 'Pages', showTotal = 
   }
   return (
     <nav aria-label={label} className="mt-6 flex items-center justify-between gap-3">
-      <Button variant="secondary" size="sm" disabled={meta.page <= 1} onClick={() => onPage(meta.page - 1)}>
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={meta.page <= 1}
+        onClick={() => onPage(meta.page - 1)}
+      >
         <Icon name="chevron-left" className="size-4" />
         Previous
       </Button>

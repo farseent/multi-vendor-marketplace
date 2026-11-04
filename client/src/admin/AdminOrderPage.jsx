@@ -1,7 +1,26 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Button, Card, CardHeader, ConfirmDialog, ErrorState, Field, Icon, Input, LinkButton, PageHeader, PageLoading, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  CardHeader,
+  ConfirmDialog,
+  ErrorState,
+  Field,
+  Icon,
+  Input,
+  LinkButton,
+  PageHeader,
+  PageLoading,
+  StatusBadge,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+} from '../components/ui';
 import {
   adminErrorMessage,
   adminGet,
@@ -24,7 +43,9 @@ function RefundForm({ sub }) {
     adminSend(`sub-orders/${sub.id}/refund`, 'POST', body, { 'Idempotency-Key': key.current }),
   );
 
-  const amountText = request?.amountPaise ? formatINR(request.amountPaise) : `all ${formatINR(sub.refundablePaise)}`;
+  const amountText = request?.amountPaise
+    ? formatINR(request.amountPaise)
+    : `all ${formatINR(sub.refundablePaise)}`;
 
   return (
     <form
@@ -40,7 +61,13 @@ function RefundForm({ sub }) {
         <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
       </Field>
       <Field label="Note">
-        <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} required minLength={3} />
+        <Input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={300}
+          required
+          minLength={3}
+        />
       </Field>
       <Button type="submit" variant="danger-outline" loading={refund.isPending}>
         Refund customer
@@ -77,10 +104,19 @@ function ReleaseButton({ settlement }) {
   const release = useAdminAction(() => adminSend(`settlements/${settlement.id}/release`, 'POST'));
   return (
     <>
-      <Button variant="secondary" size="sm" onClick={() => setConfirming(true)} disabled={release.isPending}>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => setConfirming(true)}
+        disabled={release.isPending}
+      >
         Release payout early
       </Button>
-      {release.error && <Alert tone="danger" className="mt-2">{adminErrorMessage(release.error)}</Alert>}
+      {release.error && (
+        <Alert tone="danger" className="mt-2">
+          {adminErrorMessage(release.error)}
+        </Alert>
+      )}
       <ConfirmDialog
         open={confirming}
         title="Release this payout now?"
@@ -99,7 +135,11 @@ function Money({ label, value, strong }) {
   return (
     <div>
       <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className={`tabular text-sm ${strong ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>{value}</dd>
+      <dd
+        className={`tabular text-sm ${strong ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}
+      >
+        {value}
+      </dd>
     </div>
   );
 }
@@ -143,19 +183,27 @@ function SubOrder({ sub }) {
         {sub.settlement && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-700">
             <span>Settlement:</span>
-            <StatusBadge status={sub.settlement.status} label={settlementStatusText(sub.settlement.status)} className="capitalize" />
+            <StatusBadge
+              status={sub.settlement.status}
+              label={settlementStatusText(sub.settlement.status)}
+              className="capitalize"
+            />
             <span>
-              net payout <strong className="tabular">{formatINR(sub.settlement.netPayoutPaise)}</strong>
+              net payout{' '}
+              <strong className="tabular">{formatINR(sub.settlement.netPayoutPaise)}</strong>
             </span>
-            {sub.settlement.status === 'pending_release' && <ReleaseButton settlement={sub.settlement} />}
+            {sub.settlement.status === 'pending_release' && (
+              <ReleaseButton settlement={sub.settlement} />
+            )}
           </div>
         )}
         {sub.refunds.length > 0 && (
           <ul className="space-y-2 text-sm text-slate-700">
             {sub.refunds.map((r) => (
               <li key={r.id} className="rounded-lg border border-slate-200 bg-white p-3">
-                <strong className="tabular">{formatINR(r.amountPaise)}</strong> refunded ({r.status}) – commission
-                back {formatINR(r.commissionReversedPaise)}, vendor debited {formatINR(r.vendorDebitPaise)}
+                <strong className="tabular">{formatINR(r.amountPaise)}</strong> refunded ({r.status}
+                ) – commission back {formatINR(r.commissionReversedPaise)}, vendor debited{' '}
+                {formatINR(r.vendorDebitPaise)}
                 {r.note ? ` – \u201c${r.note}\u201d` : ''}
               </li>
             ))}
@@ -208,7 +256,9 @@ export default function AdminOrderPage() {
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between gap-3">
               <dt className="text-slate-500">Total</dt>
-              <dd className="tabular font-semibold text-slate-900">{formatINR(order.totalPaise)}</dd>
+              <dd className="tabular font-semibold text-slate-900">
+                {formatINR(order.totalPaise)}
+              </dd>
             </div>
             <div className="flex items-center justify-between gap-3">
               <dt className="text-slate-500">Payment</dt>
@@ -234,7 +284,8 @@ export default function AdminOrderPage() {
               <div className="flex justify-between gap-3">
                 <dt className="text-slate-500">Coupon</dt>
                 <dd className="text-right text-slate-900">
-                  {order.coupon.code} ({order.coupon.fundedBy}-funded, −{formatINR(order.coupon.discountPaise)})
+                  {order.coupon.code} ({order.coupon.fundedBy}-funded, −
+                  {formatINR(order.coupon.discountPaise)})
                 </dd>
               </div>
             )}
@@ -245,8 +296,9 @@ export default function AdminOrderPage() {
           <address className="flex gap-3 text-sm not-italic text-slate-700">
             <Icon name="map-pin" className="mt-0.5 size-4.5 text-slate-400" />
             <span>
-              {order.shippingAddress.name}, {order.shippingAddress.line1}, {order.shippingAddress.city},{' '}
-              {order.shippingAddress.state} {order.shippingAddress.postalCode}
+              {order.shippingAddress.name}, {order.shippingAddress.line1},{' '}
+              {order.shippingAddress.city}, {order.shippingAddress.state}{' '}
+              {order.shippingAddress.postalCode}
             </span>
           </address>
         </Card>
@@ -262,7 +314,9 @@ export default function AdminOrderPage() {
         <Alert tone="info" className="mt-6">
           Whole-order refunds:{' '}
           {order.orderRefunds
-            .map((r) => `${formatINR(r.amountPaise)} (${r.reason.replaceAll('_', ' ')}, ${r.status})`)
+            .map(
+              (r) => `${formatINR(r.amountPaise)} (${r.reason.replaceAll('_', ' ')}, ${r.status})`,
+            )
             .join(', ')}
         </Alert>
       )}

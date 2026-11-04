@@ -1,5 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
-import { Alert, EmptyState, ErrorState, PageHeader, PageLoading, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
+import {
+  Alert,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  PageLoading,
+  StatusBadge,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+} from '../components/ui';
 import {
   fetchVendorSettlements,
   fulfillmentErrorMessage,
@@ -24,7 +36,11 @@ export default function VendorSettlementsPage() {
       {isPending && <PageLoading />}
       {error && <ErrorState message={fulfillmentErrorMessage(error)} />}
       {data?.length === 0 && (
-        <EmptyState icon="wallet" title="No payouts yet" description="Payouts appear here once you have orders." />
+        <EmptyState
+          icon="wallet"
+          title="No payouts yet"
+          description="Payouts appear here once you have orders."
+        />
       )}
       {data?.length > 0 && (
         <Table label="Payouts">
@@ -42,7 +58,11 @@ export default function VendorSettlementsPage() {
                 <Td header>{s.subOrderNumber}</Td>
                 <Td num>{formatINR(s.grossPaise)}</Td>
                 <Td num>{`\u2212${formatINR(s.commissionPaise)}`}</Td>
-                <Td num>{s.refundAdjustmentPaise ? `\u2212${formatINR(s.refundAdjustmentPaise)}` : '\u2014'}</Td>
+                <Td num>
+                  {s.refundAdjustmentPaise
+                    ? `\u2212${formatINR(s.refundAdjustmentPaise)}`
+                    : '\u2014'}
+                </Td>
                 <Td num className="font-semibold text-slate-900">
                   {formatINR(s.netPayoutPaise)}
                 </Td>

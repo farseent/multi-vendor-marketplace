@@ -27,7 +27,9 @@ export const THead = ({ children }) => (
   </thead>
 );
 
-export const TBody = ({ children }) => <tbody className="divide-y divide-slate-100">{children}</tbody>;
+export const TBody = ({ children }) => (
+  <tbody className="divide-y divide-slate-100">{children}</tbody>
+);
 
 export const Th = ({ num = false, className, children }) => (
   <th

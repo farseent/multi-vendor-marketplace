@@ -96,7 +96,9 @@ export default function HomePage() {
       <section className="bg-brand-950 text-white">
         <Container className="grid items-center gap-10 py-12 sm:py-16 lg:grid-cols-2 lg:py-20">
           <div>
-            <p className="text-sm font-semibold text-brand-300">Independent sellers, one checkout</p>
+            <p className="text-sm font-semibold text-brand-300">
+              Independent sellers, one checkout
+            </p>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
               Shop many sellers in a single cart.
             </h1>
@@ -175,7 +177,10 @@ export default function HomePage() {
             <SectionHeader title="Shop by category" to="/search" />
             <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {categories.slice(0, 8).map((c) => (
-                <li key={c.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+                <li
+                  key={c.id}
+                  className="rounded-xl border border-slate-200 bg-white p-5 shadow-card"
+                >
                   <Link
                     to={`/search?category=${c.id}`}
                     className="flex items-center justify-between gap-2 font-semibold text-slate-900 hover:text-brand-700"

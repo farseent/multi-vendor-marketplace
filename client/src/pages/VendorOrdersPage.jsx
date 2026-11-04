@@ -1,6 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, Icon, Input, PageHeader, PageLoading, StatusBadge } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  Field,
+  Icon,
+  Input,
+  PageHeader,
+  PageLoading,
+  StatusBadge,
+} from '../components/ui';
 import { cx } from '../components/ui/classes.js';
 import {
   fetchVendorSubOrders,
@@ -34,7 +47,13 @@ function ShipForm({ onSubmit, onCancel, disabled }) {
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Carrier">
-          <Input value={carrier} onChange={(e) => setCarrier(e.target.value)} required minLength={2} maxLength={60} />
+          <Input
+            value={carrier}
+            onChange={(e) => setCarrier(e.target.value)}
+            required
+            minLength={2}
+            maxLength={60}
+          />
         </Field>
         <Field label="Tracking number">
           <Input
@@ -62,7 +81,14 @@ function Money({ label, value, strong }) {
   return (
     <div>
       <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className={cx('tabular text-sm', strong ? 'font-semibold text-slate-900' : 'font-medium text-slate-700')}>{value}</dd>
+      <dd
+        className={cx(
+          'tabular text-sm',
+          strong ? 'font-semibold text-slate-900' : 'font-medium text-slate-700',
+        )}
+      >
+        {value}
+      </dd>
     </div>
   );
 }
@@ -103,7 +129,9 @@ function SubOrderCard({ sub }) {
                 {item.quantity} × {formatINR(item.unitPricePaise)}
               </p>
             </div>
-            <p className="tabular text-sm font-semibold text-slate-900">{formatINR(item.lineNetPaise)}</p>
+            <p className="tabular text-sm font-semibold text-slate-900">
+              {formatINR(item.lineNetPaise)}
+            </p>
           </li>
         ))}
       </ul>
@@ -135,12 +163,19 @@ function SubOrderCard({ sub }) {
           <div className="flex flex-wrap gap-2">
             {actions.includes('ship') && <Button onClick={() => setShipping(true)}>Ship</Button>}
             {actions.includes('deliver') && (
-              <Button loading={change.isPending} onClick={() => change.mutate({ status: 'delivered' })}>
+              <Button
+                loading={change.isPending}
+                onClick={() => change.mutate({ status: 'delivered' })}
+              >
                 Mark as delivered
               </Button>
             )}
             {actions.includes('cancel') && (
-              <Button variant="danger-outline" disabled={change.isPending} onClick={() => setConfirmCancel(true)}>
+              <Button
+                variant="danger-outline"
+                disabled={change.isPending}
+                onClick={() => setConfirmCancel(true)}
+              >
                 Cancel order
               </Button>
             )}
@@ -178,7 +213,10 @@ export default function VendorOrdersPage() {
   });
   return (
     <>
-      <PageHeader title="Orders" description="What to ship, what is on its way, and what is done." />
+      <PageHeader
+        title="Orders"
+        description="What to ship, what is on its way, and what is done."
+      />
       <div role="group" aria-label="Filter by status" className="mb-6 flex flex-wrap gap-2">
         {FILTERS.map(([value, label]) => (
           <button
@@ -200,7 +238,11 @@ export default function VendorOrdersPage() {
       {isPending && <PageLoading />}
       {error && <ErrorState message={fulfillmentErrorMessage(error)} />}
       {data?.length === 0 && (
-        <EmptyState icon="receipt" title="No orders here yet" description="Orders for your products will appear here." />
+        <EmptyState
+          icon="receipt"
+          title="No orders here yet"
+          description="Orders for your products will appear here."
+        />
       )}
       <div className="space-y-5">
         {data?.map((sub) => (

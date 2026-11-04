@@ -1,6 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormError, useSubmit } from '../auth/AuthForm.jsx';
-import { Alert, Button, Card, Field, Input, PageHeader, PageLoading, StatusBadge, Textarea } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  Field,
+  Input,
+  PageHeader,
+  PageLoading,
+  StatusBadge,
+  Textarea,
+} from '../components/ui';
 import { apiFetch } from '../lib/api.js';
 
 const STATUS_HELP = {
@@ -9,7 +19,12 @@ const STATUS_HELP = {
   rejected: 'Your shop was not approved. Contact the marketplace admin.',
   suspended: 'Your shop is suspended. Your products are hidden from customers.',
 };
-const STATUS_TONE = { pending: 'warning', approved: 'success', rejected: 'danger', suspended: 'danger' };
+const STATUS_TONE = {
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+  suspended: 'danger',
+};
 
 export const profileQueryKey = ['vendor', 'profile'];
 
@@ -51,7 +66,9 @@ export default function VendorShopPage() {
     <>
       <PageHeader
         title={shop ? 'Your shop' : 'Create your shop'}
-        description={shop ? undefined : 'Set up your shop profile so you can start adding products.'}
+        description={
+          shop ? undefined : 'Set up your shop profile so you can start adding products.'
+        }
       />
       <div className="space-y-6">
         {shop && (
@@ -64,10 +81,21 @@ export default function VendorShopPage() {
         <Card>
           <form className="max-w-xl space-y-5" onSubmit={onSubmit} key={shop?.id ?? 'new'}>
             <Field label="Shop name">
-              <Input name="shopName" defaultValue={shop?.shopName} minLength={3} maxLength={60} required />
+              <Input
+                name="shopName"
+                defaultValue={shop?.shopName}
+                minLength={3}
+                maxLength={60}
+                required
+              />
             </Field>
             <Field label="Description" hint="Up to 1000 characters.">
-              <Textarea name="description" defaultValue={shop?.description} maxLength={1000} rows={4} />
+              <Textarea
+                name="description"
+                defaultValue={shop?.description}
+                maxLength={1000}
+                rows={4}
+              />
             </Field>
             <FormError error={formError} />
             <Button type="submit" loading={submitting}>
@@ -77,7 +105,10 @@ export default function VendorShopPage() {
         </Card>
         {shop && (
           <p className="text-sm text-slate-500">
-            Public page: <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs">/shops/{shop.shopSlug}</code>{' '}
+            Public page:{' '}
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs">
+              /shops/{shop.shopSlug}
+            </code>{' '}
             (visible once approved)
           </p>
         )}

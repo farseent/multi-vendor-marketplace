@@ -84,10 +84,14 @@ function SearchForm({ filters, onApply }) {
   });
 
   return (
-    <Card as="form" className="space-y-4" onSubmit={(event) => {
-      event.preventDefault();
-      onApply(draft);
-    }}>
+    <Card
+      as="form"
+      className="space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onApply(draft);
+      }}
+    >
       <Field label="Search">
         <Input type="search" value={draft.q} onChange={set('q')} maxLength={100} />
       </Field>
@@ -184,7 +188,10 @@ function Results({ filters, onPage }) {
   }
 
   return (
-    <section aria-busy={isFetching} className={isFetching ? 'opacity-70 transition-opacity' : 'transition-opacity'}>
+    <section
+      aria-busy={isFetching}
+      className={isFetching ? 'opacity-70 transition-opacity' : 'transition-opacity'}
+    >
       <p className="mb-4 text-sm text-slate-600" aria-live="polite">
         {meta.total} {meta.total === 1 ? 'product' : 'products'}
       </p>

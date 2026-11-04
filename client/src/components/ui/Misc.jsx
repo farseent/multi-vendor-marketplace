@@ -133,7 +133,11 @@ export function SearchBar({ className, defaultValue = '', large = false }) {
           placeholder="Search products"
           aria-label="Search products"
           maxLength={100}
-          className={cx(inputClasses, 'rounded-r-none border-r-0 pl-10', large && 'min-h-12 sm:min-h-12')}
+          className={cx(
+            inputClasses,
+            'rounded-r-none border-r-0 pl-10',
+            large && 'min-h-12 sm:min-h-12',
+          )}
         />
       </div>
       <Button type="submit" size={large ? 'lg' : 'md'} className="rounded-l-none">
@@ -150,7 +154,12 @@ export function OrderTotals({ rows, total }) {
       {rows.map(([label, value, tone]) => (
         <div key={label} className="flex justify-between gap-4">
           <dt className="text-slate-600">{label}</dt>
-          <dd className={cx('tabular font-medium', tone === 'success' ? 'text-emerald-700' : 'text-slate-900')}>
+          <dd
+            className={cx(
+              'tabular font-medium',
+              tone === 'success' ? 'text-emerald-700' : 'text-slate-900',
+            )}
+          >
             {value}
           </dd>
         </div>

@@ -1,7 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Alert, Badge, Button, Card, CardHeader, Container, EmptyState, ErrorState, Field, Icon, Input, LinkButton, OrderTotals, PageHeader, PageLoading } from '../components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  Container,
+  EmptyState,
+  ErrorState,
+  Field,
+  Icon,
+  Input,
+  LinkButton,
+  OrderTotals,
+  PageHeader,
+  PageLoading,
+} from '../components/ui';
 import { linkClasses } from '../components/ui/classes.js';
 import { apiFetch } from '../lib/api.js';
 import { CART_KEY, fetchCart } from '../lib/cart.js';
@@ -156,7 +172,9 @@ export default function CheckoutPage() {
         <Card>
           <CardHeader
             title="Delivery address"
-            description={showForm ? 'Where should we send your order?' : 'Choose where your order should go.'}
+            description={
+              showForm ? 'Where should we send your order?' : 'Choose where your order should go.'
+            }
           />
           {!showForm && (
             <>
@@ -211,14 +229,18 @@ export default function CheckoutPage() {
             {cart.items.map((line) => (
               <li key={line.productId} className="flex gap-3">
                 <div className="size-14 shrink-0 overflow-hidden rounded-md bg-slate-100">
-                  {line.imageUrl && <img src={line.imageUrl} alt="" className="size-full object-cover" />}
+                  {line.imageUrl && (
+                    <img src={line.imageUrl} alt="" className="size-full object-cover" />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1 text-sm">
                   <p className="line-clamp-2 font-medium text-slate-900">{line.title}</p>
                   <p className="text-xs text-slate-500">Qty {line.quantity}</p>
                 </div>
                 {line.status !== 'unavailable' && (
-                  <p className="tabular text-sm font-medium text-slate-900">{formatINR(line.lineNetPaise)}</p>
+                  <p className="tabular text-sm font-medium text-slate-900">
+                    {formatINR(line.lineNetPaise)}
+                  </p>
                 )}
               </li>
             ))}
@@ -227,7 +249,13 @@ export default function CheckoutPage() {
             rows={[
               ['Subtotal', formatINR(cart.subtotalPaise)],
               ...(cart.discountPaise > 0
-                ? [[`Discount${cart.coupon ? ` (${cart.coupon.code})` : ''}`, `\u2212${formatINR(cart.discountPaise)}`, 'success']]
+                ? [
+                    [
+                      `Discount${cart.coupon ? ` (${cart.coupon.code})` : ''}`,
+                      `\u2212${formatINR(cart.discountPaise)}`,
+                      'success',
+                    ],
+                  ]
                 : []),
               ['Shipping', 'Free'],
             ]}

@@ -1,6 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, Card, CardHeader, Field, Input, PageHeader, Select, Skeleton, StatCard } from '../components/ui';
+import {
+  Alert,
+  Card,
+  CardHeader,
+  Field,
+  Input,
+  PageHeader,
+  Select,
+  Skeleton,
+  StatCard,
+} from '../components/ui';
 import { adminErrorMessage, adminGet, adminKey, defaultRange, rangeIsValid } from '../lib/admin.js';
 import { formatINR } from '../lib/money.js';
 import { RankedTable, SalesChart } from './charts.jsx';
@@ -47,10 +57,18 @@ export default function AdminAnalyticsPage() {
       <Card className="mb-6">
         <form className="grid gap-4 sm:grid-cols-3" onSubmit={(e) => e.preventDefault()}>
           <Field label="From">
-            <Input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} />
+            <Input
+              type="date"
+              value={range.from}
+              onChange={(e) => setRange({ ...range, from: e.target.value })}
+            />
           </Field>
           <Field label="To">
-            <Input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} />
+            <Input
+              type="date"
+              value={range.to}
+              onChange={(e) => setRange({ ...range, to: e.target.value })}
+            />
           </Field>
           <Field label="Group by">
             <Select value={interval} onChange={(e) => setInterval(e.target.value)}>
@@ -67,7 +85,11 @@ export default function AdminAnalyticsPage() {
       </div>
 
       {valid && overview.isPending && (
-        <div role="status" aria-label="Loading figures" className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div
+          role="status"
+          aria-label="Loading figures"
+          className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
+        >
           {Array.from({ length: 5 }, (_, i) => (
             <Skeleton key={i} className="h-28 rounded-xl" />
           ))}
@@ -82,8 +104,17 @@ export default function AdminAnalyticsPage() {
             value={formatINR(o.gmvPaise)}
             hint={`Net of refunds ${formatINR(o.netGmvPaise)}`}
           />
-          <StatCard icon="receipt" label="Orders" value={o.orderCount} hint={`${o.subOrderCount} sub-orders`} />
-          <StatCard icon="chart" label="Average order" value={formatINR(o.averageOrderValuePaise)} />
+          <StatCard
+            icon="receipt"
+            label="Orders"
+            value={o.orderCount}
+            hint={`${o.subOrderCount} sub-orders`}
+          />
+          <StatCard
+            icon="chart"
+            label="Average order"
+            value={formatINR(o.averageOrderValuePaise)}
+          />
           <StatCard icon="refresh" label="Refunded" value={formatINR(o.refundedPaise)} />
           <StatCard
             icon="tag"

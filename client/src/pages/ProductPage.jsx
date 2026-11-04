@@ -3,7 +3,16 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import AddToCart from '../components/AddToCart.jsx';
 import ReviewsSection from '../components/ReviewsSection.jsx';
-import { Badge, Card, Container, ErrorState, Icon, LinkButton, Skeleton, Stars } from '../components/ui';
+import {
+  Badge,
+  Card,
+  Container,
+  ErrorState,
+  Icon,
+  LinkButton,
+  Skeleton,
+  Stars,
+} from '../components/ui';
 import { cx } from '../components/ui/classes.js';
 import { apiFetch } from '../lib/api.js';
 import { formatINR } from '../lib/money.js';
@@ -96,7 +105,9 @@ export default function ProductPage() {
 
   const attributes = Object.entries(product.attributes);
   const discount = product.compareAtPricePaise
-    ? Math.round(((product.compareAtPricePaise - product.pricePaise) / product.compareAtPricePaise) * 100)
+    ? Math.round(
+        ((product.compareAtPricePaise - product.pricePaise) / product.compareAtPricePaise) * 100,
+      )
     : 0;
 
   return (
@@ -132,7 +143,10 @@ export default function ProductPage() {
             <Icon name="store" className="size-4 text-slate-400" />
             Sold by <span className="font-medium text-slate-900">{product.shop.name}</span>
           </p>
-          <a href="#reviews" className="mt-3 flex items-center gap-2 text-sm text-slate-600 hover:text-brand-700">
+          <a
+            href="#reviews"
+            className="mt-3 flex items-center gap-2 text-sm text-slate-600 hover:text-brand-700"
+          >
             {product.ratingCount > 0 && <Stars rating={product.ratingAvg.toFixed(1)} />}
             {ratingSummaryText(product.ratingAvg, product.ratingCount)}
           </a>

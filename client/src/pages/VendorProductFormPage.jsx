@@ -3,7 +3,20 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { FormError, useSubmit } from '../auth/AuthForm.jsx';
 import ImageUploader from '../components/ImageUploader.jsx';
-import { Alert, Button, Card, CardHeader, ErrorState, Field, Input, LinkButton, PageHeader, PageLoading, Select, Textarea } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  CardHeader,
+  ErrorState,
+  Field,
+  Input,
+  LinkButton,
+  PageHeader,
+  PageLoading,
+  Select,
+  Textarea,
+} from '../components/ui';
 import { apiFetch } from '../lib/api.js';
 import { paiseToRupees, rupeesToPaise } from '../lib/money.js';
 
@@ -35,10 +48,20 @@ function StockForm({ product }) {
   });
   return (
     <Card>
-      <CardHeader title="Stock" description="Stock is updated on its own, separately from the product details." />
+      <CardHeader
+        title="Stock"
+        description="Stock is updated on its own, separately from the product details."
+      />
       <form className="max-w-xs space-y-4" onSubmit={onSubmit}>
         <Field label="Units in stock">
-          <Input name="stockQty" type="number" min="0" step="1" defaultValue={product.stockQty} required />
+          <Input
+            name="stockQty"
+            type="number"
+            min="0"
+            step="1"
+            defaultValue={product.stockQty}
+            required
+          />
         </Field>
         <FormError error={error} />
         {saved && <Alert tone="success">Stock updated.</Alert>}
@@ -96,10 +119,21 @@ function ProductForm({ product, categories }) {
         <CardHeader title="Basic information" />
         <div className="space-y-4">
           <Field label="Title">
-            <Input name="title" defaultValue={product?.title} minLength={3} maxLength={150} required />
+            <Input
+              name="title"
+              defaultValue={product?.title}
+              minLength={3}
+              maxLength={150}
+              required
+            />
           </Field>
           <Field label="Description">
-            <Textarea name="description" defaultValue={product?.description} maxLength={5000} rows={5} />
+            <Textarea
+              name="description"
+              defaultValue={product?.description}
+              maxLength={5000}
+              rows={5}
+            />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Category">
@@ -138,11 +172,16 @@ function ProductForm({ product, categories }) {
               required
             />
           </Field>
-          <Field label="Compare-at price (₹, optional)" hint="Must be higher than the price. Shown crossed out.">
+          <Field
+            label="Compare-at price (₹, optional)"
+            hint="Must be higher than the price. Shown crossed out."
+          >
             <Input
               name="compareAt"
               inputMode="decimal"
-              defaultValue={product?.compareAtPricePaise ? paiseToRupees(product.compareAtPricePaise) : ''}
+              defaultValue={
+                product?.compareAtPricePaise ? paiseToRupees(product.compareAtPricePaise) : ''
+              }
             />
           </Field>
           <Field label="SKU">
@@ -194,14 +233,20 @@ export default function VendorProductFormPage() {
   if (product.error) {
     return (
       <ErrorState
-        title={product.error.status === 404 ? 'Product not found' : 'We could not load this product'}
+        title={
+          product.error.status === 404 ? 'Product not found' : 'We could not load this product'
+        }
         message={product.error.status === 404 ? undefined : product.error.message}
         action={<LinkButton to="/vendor/products">Back to products</LinkButton>}
       />
     );
   }
   if (!isEdit && categories.data.length === 0) {
-    return <Alert tone="warning">No categories exist yet. Ask the marketplace admin to create one.</Alert>;
+    return (
+      <Alert tone="warning">
+        No categories exist yet. Ask the marketplace admin to create one.
+      </Alert>
+    );
   }
 
   return (

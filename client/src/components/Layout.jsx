@@ -10,7 +10,9 @@ import { cx } from './ui/classes.js';
 const navLinkClass = ({ isActive }) =>
   cx(
     'inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors lg:min-h-10',
-    isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+    isActive
+      ? 'bg-brand-50 text-brand-700'
+      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
   );
 
 // Customers only: the cart API answers 403 to other roles, so this is not even rendered for them.

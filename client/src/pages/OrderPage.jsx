@@ -2,7 +2,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { Alert, Button, Card, CardHeader, ConfirmDialog, Container, ErrorState, Icon, LinkButton, OrderTotals, PageHeader, PageLoading, StatusBadge } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  CardHeader,
+  ConfirmDialog,
+  Container,
+  ErrorState,
+  Icon,
+  LinkButton,
+  OrderTotals,
+  PageHeader,
+  PageLoading,
+  StatusBadge,
+} from '../components/ui';
 import { apiFetch } from '../lib/api.js';
 import {
   buildCheckoutOptions,
@@ -111,7 +125,14 @@ function PaymentPanel({ order, autoPay }) {
             </p>
           )}
         </div>
-        <Button size="lg" wrap className="w-full sm:w-auto" disabled={remaining === 0} loading={pay.isPending} onClick={() => pay.mutate()}>
+        <Button
+          size="lg"
+          wrap
+          className="w-full sm:w-auto"
+          disabled={remaining === 0}
+          loading={pay.isPending}
+          onClick={() => pay.mutate()}
+        >
           {pay.isPending
             ? 'Processing…'
             : order.payment.provider === 'mock'
@@ -164,7 +185,12 @@ function InvoiceButton({ orderId }) {
   const download = useMutation({ mutationFn: () => downloadInvoice(orderId) });
   return (
     <div className="space-y-2">
-      <Button variant="secondary" className="w-full" loading={download.isPending} onClick={() => download.mutate()}>
+      <Button
+        variant="secondary"
+        className="w-full"
+        loading={download.isPending}
+        onClick={() => download.mutate()}
+      >
         <Icon name="download" className="size-4" />
         {download.isPending ? 'Preparing invoice…' : 'Download invoice (PDF)'}
       </Button>
@@ -208,7 +234,11 @@ export default function OrderPage() {
         title={`Order ${order.orderNumber}`}
         actions={
           <span role="status">
-            <StatusBadge status={order.status} label={orderStatusLabel(order)} className="px-3 py-1 text-sm" />
+            <StatusBadge
+              status={order.status}
+              label={orderStatusLabel(order)}
+              className="px-3 py-1 text-sm"
+            />
           </span>
         }
       />
@@ -240,7 +270,8 @@ export default function OrderPage() {
                     <p className="flex items-center gap-2 text-sm text-slate-700">
                       <Icon name="truck" className="size-4.5 text-slate-400" />
                       <span>
-                        Tracking: <strong>{sub.tracking.carrier}</strong> {sub.tracking.trackingNumber}
+                        Tracking: <strong>{sub.tracking.carrier}</strong>{' '}
+                        {sub.tracking.trackingNumber}
                       </span>
                     </p>
                   )}
@@ -253,15 +284,21 @@ export default function OrderPage() {
                   {sub.items.map((item) => (
                     <li key={item.productId} className="flex items-center gap-4 px-5 py-4">
                       <div className="size-14 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                        {item.imageUrl && <img src={item.imageUrl} alt="" className="size-full object-cover" />}
+                        {item.imageUrl && (
+                          <img src={item.imageUrl} alt="" className="size-full object-cover" />
+                        )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="line-clamp-2 text-sm font-medium text-slate-900">{item.title}</p>
+                        <p className="line-clamp-2 text-sm font-medium text-slate-900">
+                          {item.title}
+                        </p>
                         <p className="tabular text-xs text-slate-500">
                           {item.quantity} × {formatINR(item.unitPricePaise)}
                         </p>
                       </div>
-                      <p className="tabular text-sm font-semibold text-slate-900">{formatINR(item.lineNetPaise)}</p>
+                      <p className="tabular text-sm font-semibold text-slate-900">
+                        {formatINR(item.lineNetPaise)}
+                      </p>
                     </li>
                   ))}
                 </ul>
@@ -277,7 +314,13 @@ export default function OrderPage() {
               rows={[
                 ['Subtotal', formatINR(order.subtotalPaise)],
                 ...(order.discountPaise > 0
-                  ? [[`Discount${order.coupon ? ` (${order.coupon.code})` : ''}`, `\u2212${formatINR(order.discountPaise)}`, 'success']]
+                  ? [
+                      [
+                        `Discount${order.coupon ? ` (${order.coupon.code})` : ''}`,
+                        `\u2212${formatINR(order.discountPaise)}`,
+                        'success',
+                      ],
+                    ]
                   : []),
                 ['Shipping', 'Free'],
               ]}
@@ -298,7 +341,8 @@ export default function OrderPage() {
                 <br />
                 {order.shippingAddress.line1}
                 <br />
-                {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.postalCode}
+                {order.shippingAddress.city}, {order.shippingAddress.state}{' '}
+                {order.shippingAddress.postalCode}
               </span>
             </address>
           </Card>

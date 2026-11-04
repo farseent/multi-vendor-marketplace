@@ -10,7 +10,16 @@ const SIZES = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-2xl' };
  * behind it inert, closes on Escape and restores focus afterwards. `dismissible={false}` blocks
  * Escape and backdrop clicks (use it while a request is running).
  */
-export function Modal({ open, onClose, title, description, children, footer, size = 'md', dismissible = true }) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  size = 'md',
+  dismissible = true,
+}) {
   const ref = useRef(null);
   const titleId = useId();
   const descriptionId = useId();
@@ -62,7 +71,11 @@ export function Modal({ open, onClose, title, description, children, footer, siz
           </p>
         )}
         {open && children && <div className="mt-4">{children}</div>}
-        {footer && <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">{footer}</div>}
+        {footer && (
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            {footer}
+          </div>
+        )}
       </div>
     </dialog>
   );
@@ -93,7 +106,11 @@ export function ConfirmDialog({
           <Button variant="secondary" onClick={onCancel} disabled={pending}>
             {cancelLabel}
           </Button>
-          <Button variant={tone === 'danger' ? 'danger' : 'primary'} onClick={onConfirm} loading={pending}>
+          <Button
+            variant={tone === 'danger' ? 'danger' : 'primary'}
+            onClick={onConfirm}
+            loading={pending}
+          >
             {confirmLabel}
           </Button>
         </>

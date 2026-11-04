@@ -46,7 +46,10 @@ export default function Footer() {
           <h2 className="text-sm font-semibold text-white">Sell</h2>
           <ul className="mt-4 space-y-2.5">
             <li>
-              <Link to={user?.role === 'vendor' ? '/vendor/shop' : '/register-vendor'} className={linkClass}>
+              <Link
+                to={user?.role === 'vendor' ? '/vendor/shop' : '/register-vendor'}
+                className={linkClass}
+              >
                 {user?.role === 'vendor' ? 'Seller dashboard' : 'Become a seller'}
               </Link>
             </li>

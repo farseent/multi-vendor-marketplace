@@ -1,6 +1,24 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, Button, Card, CardHeader, EmptyState, Field, Input, PageHeader, PageLoading, Pagination, Select, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  PageLoading,
+  Pagination,
+  Select,
+  StatusBadge,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+} from '../components/ui';
 import {
   adminErrorMessage,
   adminKey,
@@ -63,7 +81,10 @@ function CreateCouponForm() {
             <option value="fixed">Fixed amount (₹)</option>
           </Select>
         </Field>
-        <Field label={form.type === 'percent' ? 'Percent (1-90)' : 'Amount (₹)'} error={errors.value}>
+        <Field
+          label={form.type === 'percent' ? 'Percent (1-90)' : 'Amount (₹)'}
+          error={errors.value}
+        >
           <Input {...field('value')} inputMode="decimal" />
         </Field>
         <Field label="Minimum order (₹, optional)" error={errors.minOrder}>
@@ -114,16 +135,29 @@ export default function AdminCouponsPage() {
       <CreateCouponForm />
       <Card className="mb-6">
         <Field label="Status" className="max-w-xs">
-          <Select value={filters.status} onChange={(e) => setFilters({ status: e.target.value, page: 1 })}>
+          <Select
+            value={filters.status}
+            onChange={(e) => setFilters({ status: e.target.value, page: 1 })}
+          >
             <option value="">All</option>
             <option value="active">Active</option>
             <option value="disabled">Disabled</option>
           </Select>
         </Field>
       </Card>
-      {problem && <Alert tone="danger" className="mb-4">{adminErrorMessage(problem)}</Alert>}
+      {problem && (
+        <Alert tone="danger" className="mb-4">
+          {adminErrorMessage(problem)}
+        </Alert>
+      )}
       {isPending && <PageLoading />}
-      {data?.items.length === 0 && <EmptyState icon="tag" title="No coupons yet" description="Create one with the form above." />}
+      {data?.items.length === 0 && (
+        <EmptyState
+          icon="tag"
+          title="No coupons yet"
+          description="Create one with the form above."
+        />
+      )}
       {data?.items.length > 0 && (
         <Table label="Platform coupons">
           <THead>
@@ -138,11 +172,14 @@ export default function AdminCouponsPage() {
           <TBody>
             {data.items.map((c) => (
               <tr key={c.id}>
-                <Td header className="font-mono">{c.code}</Td>
+                <Td header className="font-mono">
+                  {c.code}
+                </Td>
                 <Td>{couponValueLabel(c)}</Td>
                 <Td>{c.minOrderPaise ? formatINR(c.minOrderPaise) : '—'}</Td>
                 <Td className="whitespace-nowrap">
-                  {new Date(c.startsAt).toLocaleDateString()} – {new Date(c.expiresAt).toLocaleDateString()}
+                  {new Date(c.startsAt).toLocaleDateString()} –{' '}
+                  {new Date(c.expiresAt).toLocaleDateString()}
                 </Td>
                 <Td num>
                   {c.usedCount}
@@ -157,7 +194,10 @@ export default function AdminCouponsPage() {
                     size="sm"
                     disabled={toggle.isPending}
                     onClick={() =>
-                      toggle.mutate({ id: c.id, status: c.status === 'active' ? 'disabled' : 'active' })
+                      toggle.mutate({
+                        id: c.id,
+                        status: c.status === 'active' ? 'disabled' : 'active',
+                      })
                     }
                   >
                     {c.status === 'active' ? 'Disable' : 'Enable'}
