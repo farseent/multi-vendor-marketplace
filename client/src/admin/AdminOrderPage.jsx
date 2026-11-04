@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { Alert, Button, Card, CardHeader, ConfirmDialog, ErrorState, Field, Icon, Input, LinkButton, PageHeader, PageLoading, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
 import {
   adminErrorMessage,
   adminGet,
@@ -16,141 +17,157 @@ function RefundForm({ sub }) {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState(null);
+  const [request, setRequest] = useState(null); // validated body waiting for confirmation
   // One key per intended refund: a double click or a retry after a timeout is the SAME request.
   const key = useRef(crypto.randomUUID());
   const refund = useAdminAction((body) =>
     adminSend(`sub-orders/${sub.id}/refund`, 'POST', body, { 'Idempotency-Key': key.current }),
   );
 
+  const amountText = request?.amountPaise ? formatINR(request.amountPaise) : `all ${formatINR(sub.refundablePaise)}`;
+
   return (
     <form
-      className="admin-filters"
+      className="grid gap-4 sm:grid-cols-[14rem_1fr_auto] sm:items-end"
       onSubmit={(e) => {
         e.preventDefault();
-        const request = refundRequest({ amount, note, refundablePaise: sub.refundablePaise });
-        setMessage(request.ok ? null : request.message);
-        if (!request.ok) return;
-        refund.mutate(request.body, {
-          onSuccess: () => {
-            key.current = crypto.randomUUID();
-            setAmount('');
-            setNote('');
-          },
-        });
+        const result = refundRequest({ amount, note, refundablePaise: sub.refundablePaise });
+        setMessage(result.ok ? null : result.message);
+        if (result.ok) setRequest(result.body);
       }}
     >
-      <label>
-        Amount (₹, empty = all {formatINR(sub.refundablePaise)})
-        <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
-      </label>
-      <label>
-        Note
-        <input
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          maxLength={300}
-          required
-          minLength={3}
-        />
-      </label>
-      <button type="submit" disabled={refund.isPending}>
+      <Field label={`Amount (₹, empty = all ${formatINR(sub.refundablePaise)})`}>
+        <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
+      </Field>
+      <Field label="Note">
+        <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} required minLength={3} />
+      </Field>
+      <Button type="submit" variant="danger-outline" loading={refund.isPending}>
         Refund customer
-      </button>
+      </Button>
       {(message || refund.error) && (
-        <span role="alert" className="error">
-          {message ?? adminErrorMessage(refund.error)}
-        </span>
+        <div className="sm:col-span-3">
+          <Alert tone="danger">{message ?? adminErrorMessage(refund.error)}</Alert>
+        </div>
       )}
+      <ConfirmDialog
+        open={Boolean(request)}
+        title="Refund this customer?"
+        message={`${amountText} will be refunded for ${sub.subOrderNumber}. This cannot be undone.`}
+        confirmLabel="Refund customer"
+        pending={refund.isPending}
+        onConfirm={() =>
+          refund.mutate(request, {
+            onSuccess: () => {
+              key.current = crypto.randomUUID();
+              setAmount('');
+              setNote('');
+            },
+            onSettled: () => setRequest(null),
+          })
+        }
+        onCancel={() => setRequest(null)}
+      />
     </form>
   );
 }
 
 function ReleaseButton({ settlement }) {
+  const [confirming, setConfirming] = useState(false);
   const release = useAdminAction(() => adminSend(`settlements/${settlement.id}/release`, 'POST'));
   return (
     <>
-      <button
-        type="button"
-        disabled={release.isPending}
-        onClick={() => {
-          if (window.confirm('Release this payout now, before the 7-day return window ends?'))
-            release.mutate();
-        }}
-      >
+      <Button variant="secondary" size="sm" onClick={() => setConfirming(true)} disabled={release.isPending}>
         Release payout early
-      </button>
-      {release.error && (
-        <span role="alert" className="error">
-          {' '}
-          {adminErrorMessage(release.error)}
-        </span>
-      )}
+      </Button>
+      {release.error && <Alert tone="danger" className="mt-2">{adminErrorMessage(release.error)}</Alert>}
+      <ConfirmDialog
+        open={confirming}
+        title="Release this payout now?"
+        message="This pays the vendor before the 7-day return window ends."
+        confirmLabel="Release payout"
+        tone="primary"
+        pending={release.isPending}
+        onConfirm={() => release.mutate(undefined, { onSettled: () => setConfirming(false) })}
+        onCancel={() => setConfirming(false)}
+      />
     </>
+  );
+}
+
+function Money({ label, value, strong }) {
+  return (
+    <div>
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className={`tabular text-sm ${strong ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>{value}</dd>
+    </div>
   );
 }
 
 function SubOrder({ sub }) {
   return (
-    <article className="sub-order">
-      <h3>
-        {sub.subOrderNumber} · {sub.shop.name} ·{' '}
-        <span className="badge">{sub.fulfillmentStatus}</span>
-      </h3>
-      <div className="table-scroll">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th scope="col">Item</th>
-              <th scope="col" className="num">
-                Qty
-              </th>
-              <th scope="col" className="num">
-                Line total
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sub.items.map((i) => (
-              <tr key={`${i.productId}-${i.sku}`}>
-                <th scope="row">{i.title}</th>
-                <td className="num">{i.quantity}</td>
-                <td className="num">{formatINR(i.lineNetPaise)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <Card as="article" padded={false}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-slate-900">{sub.shop.name}</h3>
+          <p className="text-xs text-slate-500">{sub.subOrderNumber}</p>
+        </div>
+        <StatusBadge status={sub.fulfillmentStatus} />
       </div>
-      <p>
-        Customer paid <strong>{formatINR(sub.customerTotalPaise)}</strong> · commission{' '}
-        {formatINR(sub.commission.amountPaise)} ({sub.commission.rateBps / 100}%) · vendor payout{' '}
-        {formatINR(sub.vendorPayoutPaise)} · refunded {formatINR(sub.refundedPaise)}
-      </p>
-      {sub.settlement && (
-        <p>
-          Settlement: <span className="badge">{settlementStatusText(sub.settlement.status)}</span> ·
-          net payout {formatINR(sub.settlement.netPayoutPaise)}{' '}
-          {sub.settlement.status === 'pending_release' && (
-            <ReleaseButton settlement={sub.settlement} />
-          )}
-        </p>
-      )}
-      {sub.refunds.length > 0 && (
-        <ul>
-          {sub.refunds.map((r) => (
-            <li key={r.id}>
-              {formatINR(r.amountPaise)} refunded ({r.status}) – commission back{' '}
-              {formatINR(r.commissionReversedPaise)}, vendor debited {formatINR(r.vendorDebitPaise)}
-              {r.note ? ` – “${r.note}”` : ''}
-            </li>
+      <Table label={`Items in ${sub.subOrderNumber}`} flush>
+        <THead>
+          <Th>Item</Th>
+          <Th num>Qty</Th>
+          <Th num>Line total</Th>
+        </THead>
+        <TBody>
+          {sub.items.map((i) => (
+            <tr key={`${i.productId}-${i.sku}`}>
+              <Td header>{i.title}</Td>
+              <Td num>{i.quantity}</Td>
+              <Td num>{formatINR(i.lineNetPaise)}</Td>
+            </tr>
           ))}
-        </ul>
-      )}
-      {sub.refundablePaise > 0 ? (
-        <RefundForm sub={sub} />
-      ) : (
-        <p className="muted">Nothing can be refunded on this sub-order now.</p>
-      )}
-    </article>
+        </TBody>
+      </Table>
+      <div className="space-y-4 border-t border-slate-100 bg-slate-50/60 px-5 py-4">
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Money label="Customer paid" value={formatINR(sub.customerTotalPaise)} strong />
+          <Money
+            label={`Commission (${sub.commission.rateBps / 100}%)`}
+            value={formatINR(sub.commission.amountPaise)}
+          />
+          <Money label="Vendor payout" value={formatINR(sub.vendorPayoutPaise)} />
+          <Money label="Refunded" value={formatINR(sub.refundedPaise)} />
+        </dl>
+        {sub.settlement && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-700">
+            <span>Settlement:</span>
+            <StatusBadge status={sub.settlement.status} label={settlementStatusText(sub.settlement.status)} className="capitalize" />
+            <span>
+              net payout <strong className="tabular">{formatINR(sub.settlement.netPayoutPaise)}</strong>
+            </span>
+            {sub.settlement.status === 'pending_release' && <ReleaseButton settlement={sub.settlement} />}
+          </div>
+        )}
+        {sub.refunds.length > 0 && (
+          <ul className="space-y-2 text-sm text-slate-700">
+            {sub.refunds.map((r) => (
+              <li key={r.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                <strong className="tabular">{formatINR(r.amountPaise)}</strong> refunded ({r.status}) – commission
+                back {formatINR(r.commissionReversedPaise)}, vendor debited {formatINR(r.vendorDebitPaise)}
+                {r.note ? ` – \u201c${r.note}\u201d` : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+        {sub.refundablePaise > 0 ? (
+          <RefundForm sub={sub} />
+        ) : (
+          <p className="text-sm text-slate-500">Nothing can be refunded on this sub-order now.</p>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -166,48 +183,89 @@ export default function AdminOrderPage() {
     queryFn: () => adminGet(`orders/${orderId}`),
   });
 
-  if (isPending) return <p>Loading…</p>;
+  if (isPending) return <PageLoading />;
   if (error) {
     return (
-      <p role="alert" className="error">
-        {error.status === 404 ? 'Order not found.' : adminErrorMessage(error)}
-      </p>
+      <ErrorState
+        title={error.status === 404 ? 'Order not found' : 'We could not load this order'}
+        message={error.status === 404 ? undefined : adminErrorMessage(error)}
+        action={<LinkButton to="/admin/orders">All orders</LinkButton>}
+      />
     );
   }
   return (
-    <section>
-      <p>
-        <Link to="/admin/orders">← All orders</Link>
-      </p>
-      <h1>{order.orderNumber}</h1>
-      <p>
-        {order.customer?.name} ({order.customer?.email}) · {order.status.replaceAll('_', ' ')} ·
-        payment {order.paymentStatus} · refunds {order.refundStatus}
-      </p>
-      <p>
-        Total <strong>{formatINR(order.totalPaise)}</strong>
-        {order.coupon &&
-          ` · coupon ${order.coupon.code} (${order.coupon.fundedBy}-funded, −${formatINR(order.coupon.discountPaise)})`}
-        {order.payment && ` · paid via ${order.payment.provider} (${order.payment.status})`}
-      </p>
-      <address>
-        {order.shippingAddress.name}, {order.shippingAddress.line1}, {order.shippingAddress.city},{' '}
-        {order.shippingAddress.state} {order.shippingAddress.postalCode}
-      </address>
-      <h2>Sub-orders</h2>
-      {order.subOrders.map((sub) => (
-        <SubOrder key={sub.id} sub={sub} />
-      ))}
+    <>
+      <PageHeader
+        back={{ to: '/admin/orders', label: 'All orders' }}
+        title={order.orderNumber}
+        description={`${order.customer?.name ?? ''} (${order.customer?.email ?? ''})`}
+        actions={<StatusBadge status={order.status} />}
+      />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <Card>
+          <CardHeader title="Payment" />
+          <dl className="space-y-2 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">Total</dt>
+              <dd className="tabular font-semibold text-slate-900">{formatINR(order.totalPaise)}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-slate-500">Payment</dt>
+              <dd>
+                <StatusBadge status={order.paymentStatus} />
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-slate-500">Refunds</dt>
+              <dd>
+                <StatusBadge status={order.refundStatus} />
+              </dd>
+            </div>
+            {order.payment && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Paid via</dt>
+                <dd className="text-slate-900">
+                  {order.payment.provider} ({order.payment.status})
+                </dd>
+              </div>
+            )}
+            {order.coupon && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Coupon</dt>
+                <dd className="text-right text-slate-900">
+                  {order.coupon.code} ({order.coupon.fundedBy}-funded, −{formatINR(order.coupon.discountPaise)})
+                </dd>
+              </div>
+            )}
+          </dl>
+        </Card>
+        <Card className="lg:col-span-2">
+          <CardHeader title="Shipping address" />
+          <address className="flex gap-3 text-sm not-italic text-slate-700">
+            <Icon name="map-pin" className="mt-0.5 size-4.5 text-slate-400" />
+            <span>
+              {order.shippingAddress.name}, {order.shippingAddress.line1}, {order.shippingAddress.city},{' '}
+              {order.shippingAddress.state} {order.shippingAddress.postalCode}
+            </span>
+          </address>
+        </Card>
+      </div>
+
+      <h2 className="mb-4 mt-8 text-lg font-semibold text-slate-900">Sub-orders</h2>
+      <div className="space-y-5">
+        {order.subOrders.map((sub) => (
+          <SubOrder key={sub.id} sub={sub} />
+        ))}
+      </div>
       {order.orderRefunds.length > 0 && (
-        <p>
+        <Alert tone="info" className="mt-6">
           Whole-order refunds:{' '}
           {order.orderRefunds
-            .map(
-              (r) => `${formatINR(r.amountPaise)} (${r.reason.replaceAll('_', ' ')}, ${r.status})`,
-            )
+            .map((r) => `${formatINR(r.amountPaise)} (${r.reason.replaceAll('_', ' ')}, ${r.status})`)
             .join(', ')}
-        </p>
+        </Alert>
       )}
-    </section>
+    </>
   );
 }

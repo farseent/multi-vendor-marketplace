@@ -1,28 +1,16 @@
-import { NavLink, Outlet } from 'react-router-dom';
-import './admin.css';
+import DashboardLayout from '../components/DashboardLayout.jsx';
 
 const LINKS = [
-  ['analytics', 'Analytics'],
-  ['orders', 'Orders'],
-  ['vendors', 'Vendors'],
-  ['products', 'Products'],
-  ['reviews', 'Reviews'],
-  ['coupons', 'Coupons'],
-  ['settlements', 'Settlements'],
+  { to: '/admin/analytics', label: 'Analytics', icon: 'chart' },
+  { to: '/admin/orders', label: 'Orders', icon: 'receipt' },
+  { to: '/admin/vendors', label: 'Vendors', icon: 'store' },
+  { to: '/admin/products', label: 'Products', icon: 'package' },
+  { to: '/admin/reviews', label: 'Reviews', icon: 'message' },
+  { to: '/admin/coupons', label: 'Coupons', icon: 'tag' },
+  { to: '/admin/settlements', label: 'Settlements', icon: 'wallet' },
 ];
 
-/** Shell of the admin console: a sub-navigation and the page below it. UX only; the API checks the role. */
+/** Shell of the admin console: sidebar plus the page. UX only; the API checks the role. */
 export default function AdminLayout() {
-  return (
-    <div className="admin">
-      <nav className="admin-nav" aria-label="Admin">
-        {LINKS.map(([path, label]) => (
-          <NavLink key={path} to={`/admin/${path}`}>
-            {label}
-          </NavLink>
-        ))}
-      </nav>
-      <Outlet />
-    </div>
-  );
+  return <DashboardLayout title="Admin console" links={LINKS} tone="dark" />;
 }

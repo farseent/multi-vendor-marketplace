@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { apiFetch } from '../lib/api.js';
 import { CART_KEY, fetchCart, MAX_QUANTITY, roomLeft } from '../lib/cart.js';
+import { Alert, Button, Icon, Select } from './ui';
+import { linkClasses } from './ui/classes.js';
 
 /**
  * "Add to cart" for the public product page. Only customers have a cart (the API answers 403 to
@@ -31,34 +33,37 @@ export default function AddToCart({ product }) {
   if (!product.inStock) return null;
   if (status === 'anonymous') {
     return (
-      <p>
-        <Link to="/login" state={{ from: `/products/${product.slug}` }}>
+      <Alert tone="info">
+        <Link to="/login" state={{ from: `/products/${product.slug}` }} className={linkClasses}>
           Log in
         </Link>{' '}
         to add this to your cart.
-      </p>
+      </Alert>
     );
   }
   if (!isCustomer) return null;
 
   const room = roomLeft(inCart);
   return (
-    <div className="add-to-cart">
+    <div className="space-y-3">
       {room === 0 ? (
-        <p>
+        <Alert tone="warning">
           You already have the maximum ({MAX_QUANTITY}) in your cart.{' '}
-          <Link to="/cart">View cart</Link>
-        </p>
+          <Link to="/cart" className={linkClasses}>
+            View cart
+          </Link>
+        </Alert>
       ) : (
         <form
+          className="flex flex-wrap items-end gap-3"
           onSubmit={(event) => {
             event.preventDefault();
             add.mutate();
           }}
         >
-          <label>
-            Quantity{' '}
-            <select
+          <label className="block w-24">
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Quantity</span>
+            <Select
               value={Math.min(quantity, room)}
               onChange={(event) => setQuantity(Number(event.target.value))}
             >
@@ -67,19 +72,23 @@ export default function AddToCart({ product }) {
                   {n}
                 </option>
               ))}
-            </select>
-          </label>{' '}
-          <button type="submit" disabled={add.isPending}>
+            </Select>
+          </label>
+          <Button type="submit" size="lg" className="min-w-44 flex-1 sm:flex-none" loading={add.isPending}>
+            <Icon name="cart" className="size-5" />
             {add.isPending ? 'Adding…' : 'Add to cart'}
-          </button>
+          </Button>
         </form>
       )}
       {add.isSuccess && (
-        <p role="status">
-          Added. <Link to="/cart">View cart</Link>
-        </p>
+        <Alert tone="success">
+          Added to your cart.{' '}
+          <Link to="/cart" className={linkClasses}>
+            View cart
+          </Link>
+        </Alert>
       )}
-      {add.error && <p role="alert">{add.error.message}</p>}
+      {add.error && <Alert tone="danger">{add.error.message}</Alert>}
     </div>
   );
 }

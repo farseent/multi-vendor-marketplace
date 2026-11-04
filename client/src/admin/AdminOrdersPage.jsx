@@ -1,14 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Alert, Button, Card, EmptyState, Field, Icon, Input, PageHeader, PageLoading, Pagination, Select, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
 import { adminErrorMessage, adminKey, adminList } from '../lib/admin.js';
 import { formatINR } from '../lib/money.js';
-import Pager from './Pager.jsx';
 
 const select = (label, name, values, filters, setFilters) => (
-  <label>
-    {label}
-    <select
+  <Field label={label}>
+    <Select
       value={filters[name]}
       onChange={(e) => setFilters({ ...filters, [name]: e.target.value, page: 1 })}
     >
@@ -18,8 +17,8 @@ const select = (label, name, values, filters, setFilters) => (
           {v.replaceAll('_', ' ')}
         </option>
       ))}
-    </select>
-  </label>
+    </Select>
+  </Field>
 );
 
 /** All orders, newest first; find one by (the start of) its number. */
@@ -39,77 +38,74 @@ export default function AdminOrdersPage() {
   });
 
   return (
-    <section>
-      <h1>Orders</h1>
-      <form
-        className="admin-filters"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setFilters({ ...filters, q: text.trim(), page: 1 });
-        }}
-      >
-        <label>
-          Order number
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="MP-2026…"
-            maxLength={100}
-          />
-        </label>
-        {select(
-          'Order status',
-          'status',
-          ['pending_payment', 'placed', 'completed', 'cancelled', 'expired'],
-          filters,
-          setFilters,
-        )}
-        {select('Payment', 'paymentStatus', ['unpaid', 'paid', 'failed'], filters, setFilters)}
-        {select('Refunds', 'refundStatus', ['none', 'partial', 'full'], filters, setFilters)}
-        <button type="submit">Search</button>
-      </form>
-      {error && (
-        <p role="alert" className="error">
-          {adminErrorMessage(error)}
-        </p>
-      )}
-      {isPending && <p>Loading…</p>}
-      {data?.items.length === 0 && <p>No orders match.</p>}
+    <>
+      <PageHeader title="Orders" description="Every order on the marketplace, newest first." />
+      <Card className="mb-6">
+        <form
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto] lg:items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setFilters({ ...filters, q: text.trim(), page: 1 });
+          }}
+        >
+          <Field label="Order number">
+            <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="MP-2026…" maxLength={100} />
+          </Field>
+          {select(
+            'Order status',
+            'status',
+            ['pending_payment', 'placed', 'completed', 'cancelled', 'expired'],
+            filters,
+            setFilters,
+          )}
+          {select('Payment', 'paymentStatus', ['unpaid', 'paid', 'failed'], filters, setFilters)}
+          {select('Refunds', 'refundStatus', ['none', 'partial', 'full'], filters, setFilters)}
+          <Button type="submit">
+            <Icon name="search" className="size-4" />
+            Search
+          </Button>
+        </form>
+      </Card>
+      {error && <Alert tone="danger" className="mb-4">{adminErrorMessage(error)}</Alert>}
+      {isPending && <PageLoading />}
+      {data?.items.length === 0 && <EmptyState icon="receipt" title="No orders match" description="Try different filters." />}
       {data?.items.length > 0 && (
-        <div className="table-scroll">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th scope="col">Order</th>
-                <th scope="col">Customer</th>
-                <th scope="col">Placed</th>
-                <th scope="col">Status</th>
-                <th scope="col">Payment</th>
-                <th scope="col">Refunds</th>
-                <th scope="col" className="num">
-                  Total
-                </th>
+        <Table label="Orders">
+          <THead>
+            <Th>Order</Th>
+            <Th>Customer</Th>
+            <Th>Placed</Th>
+            <Th>Status</Th>
+            <Th>Payment</Th>
+            <Th>Refunds</Th>
+            <Th num>Total</Th>
+          </THead>
+          <TBody>
+            {data.items.map((o) => (
+              <tr key={o.id}>
+                <Td header>
+                  <Link to={`/admin/orders/${o.id}`} className="text-brand-600 hover:underline">
+                    {o.orderNumber}
+                  </Link>
+                </Td>
+                <Td>{o.customer?.email}</Td>
+                <Td className="whitespace-nowrap">{new Date(o.placedAt ?? o.createdAt).toLocaleString()}</Td>
+                <Td>
+                  <StatusBadge status={o.status} />
+                </Td>
+                <Td>
+                  <StatusBadge status={o.paymentStatus} />
+                </Td>
+                <Td>
+                  <StatusBadge status={o.refundStatus} />
+                </Td>
+                <Td num>{formatINR(o.totalPaise)}</Td>
               </tr>
-            </thead>
-            <tbody>
-              {data.items.map((o) => (
-                <tr key={o.id}>
-                  <th scope="row">
-                    <Link to={`/admin/orders/${o.id}`}>{o.orderNumber}</Link>
-                  </th>
-                  <td>{o.customer?.email}</td>
-                  <td>{new Date(o.placedAt ?? o.createdAt).toLocaleString()}</td>
-                  <td>{o.status.replaceAll('_', ' ')}</td>
-                  <td>{o.paymentStatus}</td>
-                  <td>{o.refundStatus}</td>
-                  <td className="num">{formatINR(o.totalPaise)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </TBody>
+        </Table>
       )}
-      <Pager meta={data?.meta} onPage={(page) => setFilters({ ...filters, page })} />
-    </section>
+      <Pagination meta={data?.meta} onPage={(page) => setFilters({ ...filters, page })} showTotal />
+    </>
   );
 }

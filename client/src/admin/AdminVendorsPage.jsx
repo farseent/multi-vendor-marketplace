@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Alert, Button, Card, ConfirmDialog, EmptyState, Field, Input, PageHeader, PageLoading, Pagination, Select, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
 import {
   adminErrorMessage,
   adminKey,
@@ -10,36 +11,37 @@ import {
   vendorNextStatuses,
 } from '../lib/admin.js';
 import { useAdminAction } from './hooks.js';
-import Pager from './Pager.jsx';
 
 const STATUSES = ['', 'pending', 'approved', 'rejected', 'suspended'];
 const VERBS = { approved: 'Approve', rejected: 'Reject', suspended: 'Suspend' };
+const VERB_VARIANT = { approved: 'primary', rejected: 'danger-outline', suspended: 'danger-outline' };
 
 function CommissionForm({ vendor, onSave, disabled }) {
   const [text, setText] = useState(bpsToPercent(vendor.commissionRateBps));
   const bps = percentToBps(text);
   return (
     <form
+      className="flex items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         if (bps !== undefined) onSave(bps);
       }}
     >
-      <label>
-        <span className="muted">Commission %</span>
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="default"
-          size={6}
-          inputMode="decimal"
-          aria-label={`Commission percent for ${vendor.shopName}`}
-          aria-invalid={bps === undefined}
-        />
-      </label>
-      <button type="submit" disabled={disabled || bps === undefined}>
+      <Input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="default"
+        className="w-24"
+        inputMode="decimal"
+        aria-label={`Commission percent for ${vendor.shopName}`}
+        aria-invalid={bps === undefined}
+      />
+      <span aria-hidden="true" className="text-sm text-slate-500">
+        %
+      </span>
+      <Button type="submit" variant="secondary" size="sm" disabled={disabled || bps === undefined}>
         Save
-      </button>
+      </Button>
     </form>
   );
 }
@@ -47,6 +49,7 @@ function CommissionForm({ vendor, onSave, disabled }) {
 /** Approve, reject or suspend shops and set a shop's own commission rate. */
 export default function AdminVendorsPage() {
   const [filters, setFilters] = useState({ status: '', page: 1 });
+  const [pending, setPending] = useState(null); // { vendor, status } waiting for confirmation
   const { data, error, isPending } = useQuery({
     queryKey: adminKey('vendors', filters),
     queryFn: () => adminList('vendors', filters),
@@ -61,79 +64,90 @@ export default function AdminVendorsPage() {
   const problem = error ?? setStatus.error ?? setCommission.error;
 
   return (
-    <section>
-      <h1>Vendors</h1>
-      <div className="admin-filters">
-        <label>
-          Status
-          <select
-            value={filters.status}
-            onChange={(e) => setFilters({ status: e.target.value, page: 1 })}
-          >
+    <>
+      <PageHeader title="Vendors" description="Approve shops and set the commission each one pays." />
+      <Card className="mb-6">
+        <Field label="Status" className="max-w-xs">
+          <Select value={filters.status} onChange={(e) => setFilters({ status: e.target.value, page: 1 })}>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {s || 'All'}
               </option>
             ))}
-          </select>
-        </label>
-      </div>
-      {problem && (
-        <p role="alert" className="error">
-          {adminErrorMessage(problem)}
-        </p>
-      )}
-      {isPending && <p>Loading…</p>}
-      {data?.items.length === 0 && <p>No shops match.</p>}
+          </Select>
+        </Field>
+      </Card>
+      {problem && <Alert tone="danger" className="mb-4">{adminErrorMessage(problem)}</Alert>}
+      {isPending && <PageLoading />}
+      {data?.items.length === 0 && <EmptyState icon="store" title="No shops match" />}
       {data?.items.length > 0 && (
-        <div className="table-scroll">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th scope="col">Shop</th>
-                <th scope="col">Owner</th>
-                <th scope="col">Status</th>
-                <th scope="col">Commission</th>
-                <th scope="col">Actions</th>
+        <Table label="Vendors">
+          <THead>
+            <Th>Shop</Th>
+            <Th>Owner</Th>
+            <Th>Status</Th>
+            <Th>Commission</Th>
+            <Th>Actions</Th>
+          </THead>
+          <TBody>
+            {data.items.map((v) => (
+              <tr key={v.id}>
+                <Td header>{v.shopName}</Td>
+                <Td>{v.owner ? `${v.owner.name} (${v.owner.email})` : ''}</Td>
+                <Td>
+                  <StatusBadge status={v.status} />
+                </Td>
+                <Td>
+                  <CommissionForm
+                    key={`${v.id}-${v.commissionRateBps}`}
+                    vendor={v}
+                    disabled={setCommission.isPending}
+                    onSave={(bps) => setCommission.mutate({ id: v.id, bps })}
+                  />
+                </Td>
+                <Td>
+                  <div className="flex flex-wrap gap-2">
+                    {vendorNextStatuses(v.status).map((status) => (
+                      <Button
+                        key={status}
+                        variant={VERB_VARIANT[status] ?? 'secondary'}
+                        size="sm"
+                        disabled={setStatus.isPending}
+                        onClick={() =>
+                          status === 'approved'
+                            ? setStatus.mutate({ id: v.id, status })
+                            : setPending({ vendor: v, status })
+                        }
+                      >
+                        {VERBS[status]}
+                      </Button>
+                    ))}
+                  </div>
+                </Td>
               </tr>
-            </thead>
-            <tbody>
-              {data.items.map((v) => (
-                <tr key={v.id}>
-                  <th scope="row">{v.shopName}</th>
-                  <td>{v.owner ? `${v.owner.name} (${v.owner.email})` : ''}</td>
-                  <td>
-                    <span className="badge">{v.status}</span>
-                  </td>
-                  <td>
-                    <CommissionForm
-                      key={`${v.id}-${v.commissionRateBps}`}
-                      vendor={v}
-                      disabled={setCommission.isPending}
-                      onSave={(bps) => setCommission.mutate({ id: v.id, bps })}
-                    />
-                  </td>
-                  <td>
-                    <div className="admin-actions">
-                      {vendorNextStatuses(v.status).map((status) => (
-                        <button
-                          key={status}
-                          type="button"
-                          disabled={setStatus.isPending}
-                          onClick={() => setStatus.mutate({ id: v.id, status })}
-                        >
-                          {VERBS[status]}
-                        </button>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </TBody>
+        </Table>
       )}
-      <Pager meta={data?.meta} onPage={(page) => setFilters({ ...filters, page })} />
-    </section>
+      <Pagination meta={data?.meta} onPage={(page) => setFilters({ ...filters, page })} showTotal />
+      <ConfirmDialog
+        open={Boolean(pending)}
+        title={pending ? `${VERBS[pending.status]} ${pending.vendor.shopName}?` : ''}
+        message={
+          pending?.status === 'suspended'
+            ? 'Its products are hidden from customers until the shop is approved again.'
+            : 'The shop will not be able to sell on the marketplace.'
+        }
+        confirmLabel={pending ? VERBS[pending.status] : 'Confirm'}
+        pending={setStatus.isPending}
+        onConfirm={() =>
+          setStatus.mutate(
+            { id: pending.vendor.id, status: pending.status },
+            { onSettled: () => setPending(null) },
+          )
+        }
+        onCancel={() => setPending(null)}
+      />
+    </>
   );
 }

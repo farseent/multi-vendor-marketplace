@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { FormError, useSubmit } from '../auth/AuthForm.jsx';
 import ImageUploader from '../components/ImageUploader.jsx';
+import { Alert, Button, Card, CardHeader, ErrorState, Field, Input, LinkButton, PageHeader, PageLoading, Select, Textarea } from '../components/ui';
 import { apiFetch } from '../lib/api.js';
 import { paiseToRupees, rupeesToPaise } from '../lib/money.js';
-import './catalog.css';
 
 /** Flattens the category tree into <option>s: "Clothing", "Clothing › Kurtas". */
 function categoryOptions(tree) {
@@ -34,25 +34,19 @@ function StockForm({ product }) {
     setSaved(true);
   });
   return (
-    <form className="auth-form" onSubmit={onSubmit}>
-      <h2>Stock</h2>
-      <label>
-        Units in stock
-        <input
-          name="stockQty"
-          type="number"
-          min="0"
-          step="1"
-          defaultValue={product.stockQty}
-          required
-        />
-      </label>
-      <FormError error={error} />
-      {saved && <p role="status">Stock updated.</p>}
-      <button type="submit" disabled={submitting}>
-        Update stock
-      </button>
-    </form>
+    <Card>
+      <CardHeader title="Stock" description="Stock is updated on its own, separately from the product details." />
+      <form className="max-w-xs space-y-4" onSubmit={onSubmit}>
+        <Field label="Units in stock">
+          <Input name="stockQty" type="number" min="0" step="1" defaultValue={product.stockQty} required />
+        </Field>
+        <FormError error={error} />
+        {saved && <Alert tone="success">Stock updated.</Alert>}
+        <Button type="submit" variant="secondary" loading={submitting}>
+          Update stock
+        </Button>
+      </form>
+    </Card>
   );
 }
 
@@ -97,77 +91,85 @@ function ProductForm({ product, categories }) {
 
   const statuses = isEdit ? ['draft', 'active', 'archived'] : ['draft', 'active'];
   return (
-    <form className="auth-form" onSubmit={onSubmit}>
-      <label>
-        Title
-        <input name="title" defaultValue={product?.title} minLength={3} maxLength={150} required />
-      </label>
-      <label>
-        Description
-        <textarea
-          name="description"
-          defaultValue={product?.description}
-          maxLength={5000}
-          rows={5}
-        />
-      </label>
-      <label>
-        Category
-        <select name="categoryId" defaultValue={product?.categoryId ?? ''} required>
-          <option value="" disabled>
-            Choose a category
-          </option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Price (₹)
-        <input
-          name="price"
-          inputMode="decimal"
-          defaultValue={product ? paiseToRupees(product.pricePaise) : ''}
-          required
-        />
-      </label>
-      <label>
-        Compare-at price (₹, optional, must be higher than the price)
-        <input
-          name="compareAt"
-          inputMode="decimal"
-          defaultValue={
-            product?.compareAtPricePaise ? paiseToRupees(product.compareAtPricePaise) : ''
-          }
-        />
-      </label>
-      <label>
-        SKU
-        <input name="sku" defaultValue={product?.sku} maxLength={64} required />
-      </label>
-      {!isEdit && (
-        <label>
-          Units in stock
-          <input name="stockQty" type="number" min="0" step="1" defaultValue="0" required />
-        </label>
-      )}
-      <label>
-        Status
-        <select name="status" defaultValue={product?.status ?? 'draft'}>
-          {statuses.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </label>
-      <ImageUploader images={images} onChange={setImages} />
+    <form className="space-y-6" onSubmit={onSubmit}>
+      <Card>
+        <CardHeader title="Basic information" />
+        <div className="space-y-4">
+          <Field label="Title">
+            <Input name="title" defaultValue={product?.title} minLength={3} maxLength={150} required />
+          </Field>
+          <Field label="Description">
+            <Textarea name="description" defaultValue={product?.description} maxLength={5000} rows={5} />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Category">
+              <Select name="categoryId" defaultValue={product?.categoryId ?? ''} required>
+                <option value="" disabled>
+                  Choose a category
+                </option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Status">
+              <Select name="status" defaultValue={product?.status ?? 'draft'}>
+                {statuses.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader title="Pricing and inventory" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Price (₹)">
+            <Input
+              name="price"
+              inputMode="decimal"
+              defaultValue={product ? paiseToRupees(product.pricePaise) : ''}
+              required
+            />
+          </Field>
+          <Field label="Compare-at price (₹, optional)" hint="Must be higher than the price. Shown crossed out.">
+            <Input
+              name="compareAt"
+              inputMode="decimal"
+              defaultValue={product?.compareAtPricePaise ? paiseToRupees(product.compareAtPricePaise) : ''}
+            />
+          </Field>
+          <Field label="SKU">
+            <Input name="sku" defaultValue={product?.sku} maxLength={64} required />
+          </Field>
+          {!isEdit && (
+            <Field label="Units in stock">
+              <Input name="stockQty" type="number" min="0" step="1" defaultValue="0" required />
+            </Field>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader title="Images" />
+        <ImageUploader images={images} onChange={setImages} />
+      </Card>
+
       <FormError error={error} />
-      <button type="submit" disabled={submitting}>
-        {isEdit ? 'Save changes' : 'Create product'}
-      </button>
+      <div className="flex flex-wrap gap-3">
+        <Button type="submit" size="lg" loading={submitting}>
+          {isEdit ? 'Save changes' : 'Create product'}
+        </Button>
+        <LinkButton to="/vendor/products" variant="secondary" size="lg">
+          Cancel
+        </LinkButton>
+      </div>
     </form>
   );
 }
@@ -187,32 +189,35 @@ export default function VendorProductFormPage() {
     retry: false,
   });
 
-  if (categories.isPending || (isEdit && product.isPending)) return <p>Loading…</p>;
-  if (categories.error) return <p role="alert">{categories.error.message}</p>;
+  if (categories.isPending || (isEdit && product.isPending)) return <PageLoading />;
+  if (categories.error) return <Alert tone="danger">{categories.error.message}</Alert>;
   if (product.error) {
     return (
-      <p role="alert">
-        {product.error.status === 404 ? 'Product not found.' : product.error.message}{' '}
-        <Link to="/vendor/products">Back to products</Link>
-      </p>
+      <ErrorState
+        title={product.error.status === 404 ? 'Product not found' : 'We could not load this product'}
+        message={product.error.status === 404 ? undefined : product.error.message}
+        action={<LinkButton to="/vendor/products">Back to products</LinkButton>}
+      />
     );
   }
   if (!isEdit && categories.data.length === 0) {
-    return <p role="alert">No categories exist yet. Ask the marketplace admin to create one.</p>;
+    return <Alert tone="warning">No categories exist yet. Ask the marketplace admin to create one.</Alert>;
   }
 
   return (
     <>
-      <h1>{isEdit ? 'Edit product' : 'New product'}</h1>
-      <p>
-        <Link to="/vendor/products">← Back to products</Link>
-      </p>
-      <ProductForm
-        key={product.data?.id ?? 'new'}
-        product={product.data}
-        categories={categories.data}
+      <PageHeader
+        title={isEdit ? 'Edit product' : 'New product'}
+        back={{ to: '/vendor/products', label: 'Back to products' }}
       />
-      {isEdit && <StockForm key={`stock-${product.data.id}`} product={product.data} />}
+      <div className="space-y-6">
+        <ProductForm
+          key={product.data?.id ?? 'new'}
+          product={product.data}
+          categories={categories.data}
+        />
+        {isEdit && <StockForm key={`stock-${product.data.id}`} product={product.data} />}
+      </div>
     </>
   );
 }

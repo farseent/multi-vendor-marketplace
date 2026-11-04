@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { uploadImage } from '../lib/uploads.js';
+import { Alert, Icon } from './ui';
+import { cx } from './ui/classes.js';
 
 const MAX_IMAGES = 6;
 
@@ -28,41 +30,70 @@ export default function ImageUploader({ images, onChange }) {
   const remove = (key) => onChange(images.filter((img) => img.key !== key));
 
   return (
-    <fieldset className="image-uploader">
-      <legend>
+    <fieldset>
+      <legend className="mb-1 text-sm font-medium text-slate-700">
         Images ({images.length}/{MAX_IMAGES})
       </legend>
-      <ul className="thumbs">
-        {images.map((img) => (
-          <li key={img.key}>
-            {img.url ? (
-              <img src={img.url} alt={img.alt ?? ''} width="96" height="96" />
-            ) : (
-              <span>{img.key}</span>
-            )}
-            <button type="button" onClick={() => remove(img.key)}>
-              Remove
+      <p className="mb-3 text-xs text-slate-500">The first image is shown on product cards.</p>
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {images.map((img, index) => (
+          <li key={img.key} className="group relative">
+            <div className="aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+              {img.url ? (
+                <img src={img.url} alt={img.alt ?? `Product image ${index + 1}`} className="size-full object-cover" />
+              ) : (
+                <span className="grid size-full place-items-center break-all p-2 text-center text-xs text-slate-500">
+                  {img.key}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => remove(img.key)}
+              aria-label={`Remove image ${index + 1}`}
+              className="absolute right-1.5 top-1.5 grid size-8 place-items-center rounded-full bg-white/95 text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:text-red-600"
+            >
+              <Icon name="x" className="size-4" />
             </button>
+            {index === 0 && (
+              <span className="absolute bottom-1.5 left-1.5 rounded bg-slate-900/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
+                Main
+              </span>
+            )}
           </li>
         ))}
+        {images.length < MAX_IMAGES && (
+          <li>
+            <label
+              className={cx(
+                'flex aspect-square cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-2 text-center text-xs text-slate-600 transition-colors hover:border-brand-400 hover:bg-brand-50/40 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-brand-600',
+                busy && 'pointer-events-none opacity-60',
+              )}
+            >
+              <Icon name="upload" className="size-6 text-slate-400" />
+              <span className="font-medium text-slate-700">{busy ? 'Uploading…' : 'Add images'}</span>
+              <span>JPEG, PNG or WebP, up to 5 MB each</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                disabled={busy}
+                onChange={onPick}
+                className="sr-only"
+              />
+            </label>
+          </li>
+        )}
       </ul>
-      {images.length < MAX_IMAGES && (
-        <label>
-          Add images (JPEG, PNG or WebP, up to 5 MB each)
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            multiple
-            disabled={busy}
-            onChange={onPick}
-          />
-        </label>
-      )}
-      {busy && <p role="status">Uploading…</p>}
-      {error && (
-        <p role="alert" className="form-error">
-          {error.message}
+      {busy && (
+        <p role="status" className="mt-3 text-sm text-slate-600">
+          Uploading…
         </p>
+      )}
+      {error && (
+        <Alert tone="danger" className="mt-3">
+          {error.message}
+        </Alert>
       )}
     </fieldset>
   );

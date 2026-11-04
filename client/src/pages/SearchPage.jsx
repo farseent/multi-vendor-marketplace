@@ -1,8 +1,25 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+import {
+  Button,
+  Card,
+  Checkbox,
+  Container,
+  EmptyState,
+  ErrorState,
+  Field,
+  Icon,
+  Input,
+  LinkButton,
+  PageHeader,
+  Pagination,
+  ProductCard,
+  Select,
+  Skeleton,
+} from '../components/ui';
+import { productGridClasses } from '../components/ui/classes.js';
 import { apiFetch } from '../lib/api.js';
-import { formatINR } from '../lib/money.js';
 import {
   SORT_OPTIONS,
   flattenCategories,
@@ -10,23 +27,45 @@ import {
   toApiQuery,
   toUrlParams,
 } from '../lib/search.js';
-import './catalog.css';
 
 /** Public product search. The URL holds the filters, so results can be shared and bookmarked. */
 export default function SearchPage() {
   const [params, setParams] = useSearchParams();
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const filters = readFilters(params);
   return (
-    <>
-      <h1>Search</h1>
-      {/* Keyed on the URL: the form is re-created (and re-seeded) whenever the filters change. */}
-      <SearchForm
-        key={params.toString()}
-        filters={filters}
-        onApply={(next) => setParams(toUrlParams({ ...next, page: 1 }))}
+    <Container className="py-8 sm:py-10">
+      <PageHeader
+        title={filters.q ? `Results for \u201c${filters.q}\u201d` : 'Browse products'}
+        description="Search the catalog, then narrow it down by category, price and availability."
       />
-      <Results filters={filters} onPage={(page) => setParams(toUrlParams({ ...filters, page }))} />
-    </>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start">
+        <aside aria-label="Filters" className="lg:sticky lg:top-24">
+          <Button
+            variant="secondary"
+            className="w-full lg:hidden"
+            aria-expanded={filtersOpen}
+            aria-controls="search-filters"
+            onClick={() => setFiltersOpen((open) => !open)}
+          >
+            <Icon name="filter" className="size-4" />
+            {filtersOpen ? 'Hide filters' : 'Show filters'}
+          </Button>
+          <div id="search-filters" className={filtersOpen ? 'mt-3 lg:mt-0' : 'hidden lg:block'}>
+            {/* Keyed on the URL: the form is re-created (and re-seeded) whenever the filters change. */}
+            <SearchForm
+              key={params.toString()}
+              filters={filters}
+              onApply={(next) => setParams(toUrlParams({ ...next, page: 1 }))}
+            />
+          </div>
+        </aside>
+        <Results
+          filters={filters}
+          onPage={(page) => setParams(toUrlParams({ ...filters, page }))}
+        />
+      </div>
+    </Container>
   );
 }
 
@@ -45,51 +84,46 @@ function SearchForm({ filters, onApply }) {
   });
 
   return (
-    <form
-      className="filters"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onApply(draft);
-      }}
-    >
-      <label>
-        Search
-        <input type="search" value={draft.q} onChange={set('q')} maxLength={100} />
-      </label>
-      <label>
-        Category
-        <select value={draft.category} onChange={set('category')}>
+    <Card as="form" className="space-y-4" onSubmit={(event) => {
+      event.preventDefault();
+      onApply(draft);
+    }}>
+      <Field label="Search">
+        <Input type="search" value={draft.q} onChange={set('q')} maxLength={100} />
+      </Field>
+      <Field label="Category">
+        <Select value={draft.category} onChange={set('category')}>
           <option value="">All categories</option>
           {flattenCategories(tree).map((c) => (
             <option key={c.id} value={c.id}>
               {c.label}
             </option>
           ))}
-        </select>
-      </label>
-      <label>
-        Min price (₹)
-        <input inputMode="decimal" value={draft.min} onChange={set('min')} size={8} />
-      </label>
-      <label>
-        Max price (₹)
-        <input inputMode="decimal" value={draft.max} onChange={set('max')} size={8} />
-      </label>
-      <label>
-        Sort by
-        <select value={draft.sort} onChange={set('sort')}>
+        </Select>
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Min price (₹)">
+          <Input inputMode="decimal" value={draft.min} onChange={set('min')} />
+        </Field>
+        <Field label="Max price (₹)">
+          <Input inputMode="decimal" value={draft.max} onChange={set('max')} />
+        </Field>
+      </div>
+      <Field label="Sort by">
+        <Select value={draft.sort} onChange={set('sort')}>
           {SORT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
-        </select>
-      </label>
-      <label className="inline">
-        <input type="checkbox" checked={draft.inStock} onChange={set('inStock')} /> In stock only
-      </label>
-      <button type="submit">Search</button>
-    </form>
+        </Select>
+      </Field>
+      <Checkbox label="In stock only" checked={draft.inStock} onChange={set('inStock')} />
+      <Button type="submit" className="w-full">
+        <Icon name="search" className="size-4" />
+        Apply
+      </Button>
+    </Card>
   );
 }
 
@@ -102,62 +136,66 @@ function Results({ filters, onPage }) {
     placeholderData: (previous) => previous, // keep the old page visible while the next loads
   });
 
-  if (isPending) return <p>Searching…</p>;
+  if (isPending) {
+    return (
+      <div role="status" aria-label="Searching…" className={productGridClasses}>
+        {Array.from({ length: 8 }, (_, i) => (
+          <div key={i} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <Skeleton className="aspect-square rounded-none" />
+            <div className="space-y-2 p-4">
+              <Skeleton className="h-4 w-4/5" />
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="h-5 w-1/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   if (error) {
     return (
-      <p role="alert">
-        {error.status === 429
-          ? 'Too many searches, please wait a moment and try again.'
-          : error.status === 422
-            ? 'Those filters are not valid. Check the prices and try again.'
-            : error.message}
-      </p>
+      <ErrorState
+        title="We could not load the results"
+        message={
+          error.status === 429
+            ? 'Too many searches, please wait a moment and try again.'
+            : error.status === 422
+              ? 'Those filters are not valid. Check the prices and try again.'
+              : error.message
+        }
+      />
     );
   }
 
   const { data: items, meta } = data;
-  if (items.length === 0) return <p>No products match your search.</p>;
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        icon="search"
+        title="No products match your search"
+        description="Try a different word, widen the price range, or clear the filters."
+        action={
+          <LinkButton to="/search" variant="secondary">
+            Clear all filters
+          </LinkButton>
+        }
+      />
+    );
+  }
 
   return (
-    <section aria-busy={isFetching}>
-      <p className="muted">
+    <section aria-busy={isFetching} className={isFetching ? 'opacity-70 transition-opacity' : 'transition-opacity'}>
+      <p className="mb-4 text-sm text-slate-600" aria-live="polite">
         {meta.total} {meta.total === 1 ? 'product' : 'products'}
       </p>
-      <ul className="product-grid">
+      <ul className={productGridClasses}>
         {items.map((p) => (
           <li key={p.id}>
-            <Link to={`/products/${p.slug}`} className="product-card">
-              {p.imageUrl ? (
-                <img src={p.imageUrl} alt="" loading="lazy" />
-              ) : (
-                <div className="no-image" />
-              )}
-              <strong>{p.title}</strong>
-              <span>{formatINR(p.pricePaise)}</span>
-              <span className="muted">
-                {p.shop.name}
-                {p.ratingCount > 0 && ` · ★ ${p.ratingAvg.toFixed(1)} (${p.ratingCount})`}
-              </span>
-              {!p.inStock && <span className="badge suspended">Out of stock</span>}
-            </Link>
+            <ProductCard product={p} />
           </li>
         ))}
       </ul>
-      <nav className="pager" aria-label="Pages">
-        <button type="button" disabled={meta.page <= 1} onClick={() => onPage(meta.page - 1)}>
-          Previous
-        </button>
-        <span>
-          Page {meta.page} of {meta.totalPages}
-        </span>
-        <button
-          type="button"
-          disabled={meta.page >= meta.totalPages}
-          onClick={() => onPage(meta.page + 1)}
-        >
-          Next
-        </button>
-      </nav>
+      <Pagination meta={meta} onPage={onPage} />
     </section>
   );
 }

@@ -1,21 +1,21 @@
 import { useState } from 'react';
-import './auth.css';
+import { Alert } from '../components/ui';
 
 /** Shows an ApiError as one message plus any per-field problems the server returned. */
 export function FormError({ error }) {
   if (!error) return null;
   const fields = Array.isArray(error.details) ? error.details : [];
   return (
-    <div role="alert" className="form-error">
+    <Alert tone="danger">
       <p>{error.message}</p>
       {fields.length > 0 && (
-        <ul>
+        <ul className="mt-1 list-disc space-y-0.5 pl-5">
           {fields.map((d, i) => (
             <li key={`${d.path}-${i}`}>{d.message}</li>
           ))}
         </ul>
       )}
-    </div>
+    </Alert>
   );
 }
 

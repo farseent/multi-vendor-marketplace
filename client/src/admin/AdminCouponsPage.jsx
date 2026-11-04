@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Alert, Button, Card, CardHeader, EmptyState, Field, Input, PageHeader, PageLoading, Pagination, Select, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
 import {
   adminErrorMessage,
   adminKey,
@@ -10,7 +11,6 @@ import {
 } from '../lib/admin.js';
 import { formatINR } from '../lib/money.js';
 import { useAdminAction } from './hooks.js';
-import Pager from './Pager.jsx';
 
 const EMPTY = {
   code: '',
@@ -33,84 +33,65 @@ function CreateCouponForm() {
     onChange: (e) => setForm({ ...form, [name]: e.target.value }),
     'aria-invalid': Boolean(errors[name]),
   });
-  const note = (name) => errors[name] && <span className="error">{errors[name]}</span>;
 
   return (
-    <form
-      className="admin-form"
-      noValidate
-      onSubmit={(e) => {
-        e.preventDefault();
-        const result = couponRequest(form);
-        setErrors(result.ok ? {} : result.errors);
-        if (!result.ok) return;
-        create.mutate(result.body, { onSuccess: () => setForm(EMPTY) });
-      }}
-    >
-      <label>
-        Code
-        <input {...field('code')} maxLength={20} />
-        {note('code')}
-      </label>
-      <label>
-        Type
-        <select
-          value={form.type}
-          onChange={(e) => setForm({ ...form, type: e.target.value, maxDiscount: '' })}
-        >
-          <option value="percent">Percent off</option>
-          <option value="fixed">Fixed amount (₹)</option>
-        </select>
-      </label>
-      <label>
-        {form.type === 'percent' ? 'Percent (1-90)' : 'Amount (₹)'}
-        <input {...field('value')} inputMode="decimal" />
-        {note('value')}
-      </label>
-      <label>
-        Minimum order (₹, optional)
-        <input {...field('minOrder')} inputMode="decimal" />
-        {note('minOrder')}
-      </label>
-      <label>
-        Maximum discount (₹, percent only)
-        <input {...field('maxDiscount')} inputMode="decimal" disabled={form.type !== 'percent'} />
-        {note('maxDiscount')}
-      </label>
-      <label>
-        Starts
-        <input type="datetime-local" {...field('startsAt')} />
-        {note('startsAt')}
-      </label>
-      <label>
-        Ends
-        <input type="datetime-local" {...field('expiresAt')} />
-        {note('expiresAt')}
-      </label>
-      <label>
-        Total uses (empty = unlimited)
-        <input {...field('usageLimitTotal')} inputMode="numeric" />
-        {note('usageLimitTotal')}
-      </label>
-      <label>
-        Uses per customer
-        <input {...field('usageLimitPerUser')} inputMode="numeric" />
-        {note('usageLimitPerUser')}
-      </label>
-      <div className="wide">
-        <button type="submit" disabled={create.isPending}>
-          Create platform coupon
-        </button>
-        {create.error && (
-          <p role="alert" className="error">
-            {adminErrorMessage(create.error)}
-          </p>
-        )}
-        <p className="muted">
-          A platform coupon is paid for by the marketplace: vendors still receive their full payout.
-        </p>
-      </div>
-    </form>
+    <Card className="mb-6">
+      <CardHeader
+        title="Create a platform coupon"
+        description="A platform coupon is paid for by the marketplace: vendors still receive their full payout."
+      />
+      <form
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          const result = couponRequest(form);
+          setErrors(result.ok ? {} : result.errors);
+          if (!result.ok) return;
+          create.mutate(result.body, { onSuccess: () => setForm(EMPTY) });
+        }}
+      >
+        <Field label="Code" error={errors.code}>
+          <Input {...field('code')} maxLength={20} />
+        </Field>
+        <Field label="Type">
+          <Select
+            value={form.type}
+            onChange={(e) => setForm({ ...form, type: e.target.value, maxDiscount: '' })}
+          >
+            <option value="percent">Percent off</option>
+            <option value="fixed">Fixed amount (₹)</option>
+          </Select>
+        </Field>
+        <Field label={form.type === 'percent' ? 'Percent (1-90)' : 'Amount (₹)'} error={errors.value}>
+          <Input {...field('value')} inputMode="decimal" />
+        </Field>
+        <Field label="Minimum order (₹, optional)" error={errors.minOrder}>
+          <Input {...field('minOrder')} inputMode="decimal" />
+        </Field>
+        <Field label="Maximum discount (₹, percent only)" error={errors.maxDiscount}>
+          <Input {...field('maxDiscount')} inputMode="decimal" disabled={form.type !== 'percent'} />
+        </Field>
+        <Field label="Starts" error={errors.startsAt}>
+          <Input type="datetime-local" {...field('startsAt')} />
+        </Field>
+        <Field label="Ends" error={errors.expiresAt}>
+          <Input type="datetime-local" {...field('expiresAt')} />
+        </Field>
+        <Field label="Total uses (empty = unlimited)" error={errors.usageLimitTotal}>
+          <Input {...field('usageLimitTotal')} inputMode="numeric" />
+        </Field>
+        <Field label="Uses per customer" error={errors.usageLimitPerUser}>
+          <Input {...field('usageLimitPerUser')} inputMode="numeric" />
+        </Field>
+        <div className="space-y-3 sm:col-span-2 lg:col-span-3">
+          {create.error && <Alert tone="danger">{adminErrorMessage(create.error)}</Alert>}
+          <Button type="submit" loading={create.isPending}>
+            Create platform coupon
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }
 
@@ -128,85 +109,66 @@ export default function AdminCouponsPage() {
   const problem = error ?? toggle.error;
 
   return (
-    <section>
-      <h1>Platform coupons</h1>
+    <>
+      <PageHeader title="Platform coupons" />
       <CreateCouponForm />
-      <div className="admin-filters">
-        <label>
-          Status
-          <select
-            value={filters.status}
-            onChange={(e) => setFilters({ status: e.target.value, page: 1 })}
-          >
+      <Card className="mb-6">
+        <Field label="Status" className="max-w-xs">
+          <Select value={filters.status} onChange={(e) => setFilters({ status: e.target.value, page: 1 })}>
             <option value="">All</option>
             <option value="active">Active</option>
             <option value="disabled">Disabled</option>
-          </select>
-        </label>
-      </div>
-      {problem && (
-        <p role="alert" className="error">
-          {adminErrorMessage(problem)}
-        </p>
-      )}
-      {isPending && <p>Loading…</p>}
-      {data?.items.length === 0 && <p>No coupons yet.</p>}
+          </Select>
+        </Field>
+      </Card>
+      {problem && <Alert tone="danger" className="mb-4">{adminErrorMessage(problem)}</Alert>}
+      {isPending && <PageLoading />}
+      {data?.items.length === 0 && <EmptyState icon="tag" title="No coupons yet" description="Create one with the form above." />}
       {data?.items.length > 0 && (
-        <div className="table-scroll">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th scope="col">Code</th>
-                <th scope="col">Discount</th>
-                <th scope="col">Minimum order</th>
-                <th scope="col">Valid</th>
-                <th scope="col" className="num">
-                  Used
-                </th>
-                <th scope="col">Status</th>
-                <th scope="col">Action</th>
+        <Table label="Platform coupons">
+          <THead>
+            <Th>Code</Th>
+            <Th>Discount</Th>
+            <Th>Minimum order</Th>
+            <Th>Valid</Th>
+            <Th num>Used</Th>
+            <Th>Status</Th>
+            <Th>Action</Th>
+          </THead>
+          <TBody>
+            {data.items.map((c) => (
+              <tr key={c.id}>
+                <Td header className="font-mono">{c.code}</Td>
+                <Td>{couponValueLabel(c)}</Td>
+                <Td>{c.minOrderPaise ? formatINR(c.minOrderPaise) : '—'}</Td>
+                <Td className="whitespace-nowrap">
+                  {new Date(c.startsAt).toLocaleDateString()} – {new Date(c.expiresAt).toLocaleDateString()}
+                </Td>
+                <Td num>
+                  {c.usedCount}
+                  {c.usageLimitTotal ? ` / ${c.usageLimitTotal}` : ''}
+                </Td>
+                <Td>
+                  <StatusBadge status={c.status} />
+                </Td>
+                <Td>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={toggle.isPending}
+                    onClick={() =>
+                      toggle.mutate({ id: c.id, status: c.status === 'active' ? 'disabled' : 'active' })
+                    }
+                  >
+                    {c.status === 'active' ? 'Disable' : 'Enable'}
+                  </Button>
+                </Td>
               </tr>
-            </thead>
-            <tbody>
-              {data.items.map((c) => (
-                <tr key={c.id}>
-                  <th scope="row">{c.code}</th>
-                  <td>{couponValueLabel(c)}</td>
-                  <td>{c.minOrderPaise ? formatINR(c.minOrderPaise) : '—'}</td>
-                  <td>
-                    {new Date(c.startsAt).toLocaleDateString()} –{' '}
-                    {new Date(c.expiresAt).toLocaleDateString()}
-                  </td>
-                  <td className="num">
-                    {c.usedCount}
-                    {c.usageLimitTotal ? ` / ${c.usageLimitTotal}` : ''}
-                  </td>
-                  <td>
-                    <span className={`badge ${c.status === 'disabled' ? 'bad' : 'good'}`}>
-                      {c.status}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      disabled={toggle.isPending}
-                      onClick={() =>
-                        toggle.mutate({
-                          id: c.id,
-                          status: c.status === 'active' ? 'disabled' : 'active',
-                        })
-                      }
-                    >
-                      {c.status === 'active' ? 'Disable' : 'Enable'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </TBody>
+        </Table>
       )}
-      <Pager meta={data?.meta} onPage={(page) => setFilters({ ...filters, page })} />
-    </section>
+      <Pagination meta={data?.meta} onPage={(page) => setFilters({ ...filters, page })} showTotal />
+    </>
   );
 }

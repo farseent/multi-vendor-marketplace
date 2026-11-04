@@ -10,6 +10,7 @@ import AdminSettlementsPage from './admin/AdminSettlementsPage.jsx';
 import AdminVendorsPage from './admin/AdminVendorsPage.jsx';
 import ProtectedRoute from './auth/ProtectedRoute.jsx';
 import Layout from './components/Layout.jsx';
+import VendorLayout from './components/VendorLayout.jsx';
 import AccountPage from './pages/AccountPage.jsx';
 import CartPage from './pages/CartPage.jsx';
 import CheckoutPage from './pages/CheckoutPage.jsx';
@@ -49,8 +50,12 @@ export default function App() {
           <Route path="orders" element={<OrdersPage />} />
           <Route path="orders/:orderId" element={<OrderPage />} />
         </Route>
-        {/* UX only: the API enforces the vendor role on every /vendor/* request. */}
-        <Route element={<ProtectedRoute roles={['vendor']} />}>
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+      {/* Vendor and admin consoles have their own shell (sidebar), outside the storefront layout. */}
+      {/* UX only: the API enforces the vendor role on every /vendor/* request. */}
+      <Route element={<ProtectedRoute roles={['vendor']} />}>
+        <Route element={<VendorLayout />}>
           <Route path="vendor/shop" element={<VendorShopPage />} />
           <Route path="vendor/products" element={<VendorProductsPage />} />
           <Route path="vendor/products/new" element={<VendorProductFormPage />} />
@@ -58,21 +63,20 @@ export default function App() {
           <Route path="vendor/orders" element={<VendorOrdersPage />} />
           <Route path="vendor/settlements" element={<VendorSettlementsPage />} />
         </Route>
-        {/* UX only: the API enforces the admin role on every /admin/* request. */}
-        <Route element={<ProtectedRoute roles={['admin']} />}>
-          <Route path="admin" element={<AdminLayout />}>
-            <Route index element={<Navigate to="analytics" replace />} />
-            <Route path="analytics" element={<AdminAnalyticsPage />} />
-            <Route path="orders" element={<AdminOrdersPage />} />
-            <Route path="orders/:orderId" element={<AdminOrderPage />} />
-            <Route path="vendors" element={<AdminVendorsPage />} />
-            <Route path="products" element={<AdminProductsPage />} />
-            <Route path="reviews" element={<AdminReviewsPage />} />
-            <Route path="coupons" element={<AdminCouponsPage />} />
-            <Route path="settlements" element={<AdminSettlementsPage />} />
-          </Route>
+      </Route>
+      {/* UX only: the API enforces the admin role on every /admin/* request. */}
+      <Route element={<ProtectedRoute roles={['admin']} />}>
+        <Route path="admin" element={<AdminLayout />}>
+          <Route index element={<Navigate to="analytics" replace />} />
+          <Route path="analytics" element={<AdminAnalyticsPage />} />
+          <Route path="orders" element={<AdminOrdersPage />} />
+          <Route path="orders/:orderId" element={<AdminOrderPage />} />
+          <Route path="vendors" element={<AdminVendorsPage />} />
+          <Route path="products" element={<AdminProductsPage />} />
+          <Route path="reviews" element={<AdminReviewsPage />} />
+          <Route path="coupons" element={<AdminCouponsPage />} />
+          <Route path="settlements" element={<AdminSettlementsPage />} />
         </Route>
-        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );

@@ -1,9 +1,9 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Alert, Button, Card, ConfirmDialog, EmptyState, Field, Icon, Input, PageHeader, PageLoading, Pagination, Select, StatusBadge, Table, TBody, Td, Th, THead } from '../components/ui';
 import { adminErrorMessage, adminKey, adminList, adminSend } from '../lib/admin.js';
 import { formatINR } from '../lib/money.js';
 import { useAdminAction } from './hooks.js';
-import Pager from './Pager.jsx';
 
 const STATUSES = ['', 'active', 'draft', 'archived', 'suspended'];
 
@@ -11,6 +11,7 @@ const STATUSES = ['', 'active', 'draft', 'archived', 'suspended'];
 export default function AdminProductsPage() {
   const [filters, setFilters] = useState({ status: '', q: '', page: 1 });
   const [text, setText] = useState('');
+  const [toSuspend, setToSuspend] = useState(null);
   const { data, error, isPending } = useQuery({
     queryKey: adminKey('products', filters),
     queryFn: () => adminList('products', filters),
@@ -22,105 +23,91 @@ export default function AdminProductsPage() {
   const problem = error ?? setStatus.error;
 
   return (
-    <section>
-      <h1>Products</h1>
-      <form
-        className="admin-filters"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setFilters({ ...filters, q: text.trim(), page: 1 });
-        }}
-      >
-        <label>
-          Status
-          <select
-            value={filters.status}
-            onChange={(e) => setFilters({ ...filters, status: e.target.value, page: 1 })}
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s || 'All'}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Title contains
-          <input value={text} onChange={(e) => setText(e.target.value)} maxLength={100} />
-        </label>
-        <button type="submit">Filter</button>
-      </form>
-      {problem && (
-        <p role="alert" className="error">
-          {adminErrorMessage(problem)}
-        </p>
-      )}
-      {isPending && <p>Loading…</p>}
-      {data?.items.length === 0 && <p>No products match.</p>}
-      {data?.items.length > 0 && (
-        <div className="table-scroll">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th scope="col">Product</th>
-                <th scope="col">Shop</th>
-                <th scope="col">Status</th>
-                <th scope="col" className="num">
-                  Price
-                </th>
-                <th scope="col" className="num">
-                  Stock
-                </th>
-                <th scope="col">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((p) => (
-                <tr key={p.id}>
-                  <th scope="row">{p.title}</th>
-                  <td>{p.shop?.name}</td>
-                  <td>
-                    <span className={`badge ${p.status === 'suspended' ? 'bad' : ''}`}>
-                      {p.status}
-                    </span>
-                  </td>
-                  <td className="num">{formatINR(p.pricePaise)}</td>
-                  <td className="num">{p.stockQty}</td>
-                  <td>
-                    {p.status === 'suspended' ? (
-                      <button
-                        type="button"
-                        disabled={setStatus.isPending}
-                        title="Back to draft: the vendor publishes it again"
-                        onClick={() => setStatus.mutate({ id: p.id, status: 'draft' })}
-                      >
-                        Restore to draft
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={setStatus.isPending}
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              `Suspend “${p.title}”? It disappears from the shop and search.`,
-                            )
-                          ) {
-                            setStatus.mutate({ id: p.id, status: 'suspended' });
-                          }
-                        }}
-                      >
-                        Suspend
-                      </button>
-                    )}
-                  </td>
-                </tr>
+    <>
+      <PageHeader title="Products" description="Every product of every shop. Suspend one to remove it from the shop and search." />
+      <Card className="mb-6">
+        <form
+          className="grid gap-4 sm:grid-cols-[14rem_1fr_auto] sm:items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setFilters({ ...filters, q: text.trim(), page: 1 });
+          }}
+        >
+          <Field label="Status">
+            <Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value, page: 1 })}>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s || 'All'}
+                </option>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </Select>
+          </Field>
+          <Field label="Title contains">
+            <Input value={text} onChange={(e) => setText(e.target.value)} maxLength={100} />
+          </Field>
+          <Button type="submit">
+            <Icon name="filter" className="size-4" />
+            Filter
+          </Button>
+        </form>
+      </Card>
+      {problem && <Alert tone="danger" className="mb-4">{adminErrorMessage(problem)}</Alert>}
+      {isPending && <PageLoading />}
+      {data?.items.length === 0 && <EmptyState icon="package" title="No products match" />}
+      {data?.items.length > 0 && (
+        <Table label="Products">
+          <THead>
+            <Th>Product</Th>
+            <Th>Shop</Th>
+            <Th>Status</Th>
+            <Th num>Price</Th>
+            <Th num>Stock</Th>
+            <Th>Action</Th>
+          </THead>
+          <TBody>
+            {data.items.map((p) => (
+              <tr key={p.id}>
+                <Td header className="min-w-48">{p.title}</Td>
+                <Td>{p.shop?.name}</Td>
+                <Td>
+                  <StatusBadge status={p.status} />
+                </Td>
+                <Td num>{formatINR(p.pricePaise)}</Td>
+                <Td num>{p.stockQty}</Td>
+                <Td>
+                  {p.status === 'suspended' ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={setStatus.isPending}
+                      title="Back to draft: the vendor publishes it again"
+                      onClick={() => setStatus.mutate({ id: p.id, status: 'draft' })}
+                    >
+                      Restore to draft
+                    </Button>
+                  ) : (
+                    <Button variant="danger-outline" size="sm" disabled={setStatus.isPending} onClick={() => setToSuspend(p)}>
+                      Suspend
+                    </Button>
+                  )}
+                </Td>
+              </tr>
+            ))}
+          </TBody>
+        </Table>
       )}
-      <Pager meta={data?.meta} onPage={(page) => setFilters({ ...filters, page })} />
-    </section>
+      <Pagination meta={data?.meta} onPage={(page) => setFilters({ ...filters, page })} showTotal />
+      <ConfirmDialog
+        open={Boolean(toSuspend)}
+        title="Suspend this product?"
+        message={toSuspend ? `\u201c${toSuspend.title}\u201d disappears from the shop and search.` : ''}
+        confirmLabel="Suspend"
+        pending={setStatus.isPending}
+        onConfirm={() =>
+          setStatus.mutate({ id: toSuspend.id, status: 'suspended' }, { onSettled: () => setToSuspend(null) })
+        }
+        onCancel={() => setToSuspend(null)}
+      />
+    </>
   );
 }
