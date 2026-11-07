@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import AdminAnalyticsPage from './admin/AdminAnalyticsPage.jsx';
+import AdminCategoriesPage from './admin/AdminCategoriesPage.jsx';
 import AdminCouponsPage from './admin/AdminCouponsPage.jsx';
 import AdminLayout from './admin/AdminLayout.jsx';
 import AdminOrderPage from './admin/AdminOrderPage.jsx';
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="orders/:orderId" element={<AdminOrderPage />} />
           <Route path="vendors" element={<AdminVendorsPage />} />
           <Route path="products" element={<AdminProductsPage />} />
+          <Route path="categories" element={<AdminCategoriesPage />} />
           <Route path="reviews" element={<AdminReviewsPage />} />
           <Route path="coupons" element={<AdminCouponsPage />} />
           <Route path="settlements" element={<AdminSettlementsPage />} />

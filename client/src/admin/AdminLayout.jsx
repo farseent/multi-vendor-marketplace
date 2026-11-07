@@ -5,6 +5,7 @@ const LINKS = [
   { to: '/admin/orders', label: 'Orders', icon: 'receipt' },
   { to: '/admin/vendors', label: 'Vendors', icon: 'store' },
   { to: '/admin/products', label: 'Products', icon: 'package' },
+  { to: '/admin/categories', label: 'Categories', icon: 'grid' },
   { to: '/admin/reviews', label: 'Reviews', icon: 'message' },
   { to: '/admin/coupons', label: 'Coupons', icon: 'tag' },
   { to: '/admin/settlements', label: 'Settlements', icon: 'wallet' },
