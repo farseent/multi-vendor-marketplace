@@ -15,6 +15,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Phase 9: fail the build on high or critical advisories (moderate/low are reported only).
+      - run: npm run audit
       - run: npm run lint
       - run: npm run format:check
       - run: npm test

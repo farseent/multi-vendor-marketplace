@@ -44,7 +44,9 @@ try {
 
 const logger = createLogger({ level: env.LOG_LEVEL, nodeEnv: env.NODE_ENV });
 const redis = createRedis({ url: env.REDIS_URL, logger });
-const es = createEsClient({ url: env.ELASTICSEARCH_URL });
+// Elasticsearch is optional (D70): without a URL search uses the Mongo fallback (D12).
+const es = env.ELASTICSEARCH_URL ? createEsClient({ url: env.ELASTICSEARCH_URL }) : null;
+if (!es) logger.info('ELASTICSEARCH_URL is not set: search uses the Mongo fallback');
 // Image storage is optional: without S3_BUCKET the API still runs, uploads answer 503.
 const storage = env.S3_BUCKET
   ? createStorage({
@@ -88,9 +90,9 @@ async function main() {
 
   // Elasticsearch is optional at boot (D12): if it is down, search uses the Mongo fallback and
   // the sync job creates the index as soon as ES answers.
-  const searchIndex = createSearchIndex({ client: es });
+  const searchIndex = es ? createSearchIndex({ client: es }) : null;
   await searchIndex
-    .ensureIndex()
+    ?.ensureIndex()
     .catch((err) => logger.warn({ err: err.message }, 'Elasticsearch not ready at boot'));
 
   const paymentProvider = createPaymentProvider(env);
@@ -101,7 +103,7 @@ async function main() {
     checks: {
       mongo: { required: true, check: pingMongo },
       redis: { required: false, check: () => pingRedis(redis) },
-      elasticsearch: { required: false, check: () => pingEs(es) },
+      ...(es && { elasticsearch: { required: false, check: () => pingEs(es) } }),
     },
   });
 
@@ -114,20 +116,22 @@ async function main() {
     redis,
     storage,
     searchIndex,
+    searchOutboxEnabled: Boolean(es),
     paymentProvider,
     platformCommissionBps: env.PLATFORM_COMMISSION_BPS,
     trustProxy: env.TRUST_PROXY,
   });
   const server = app.listen(env.PORT, () => logger.info({ port: env.PORT }, 'API listening'));
 
-  const searchSync = createSearchSyncJob({ searchIndex, jobLocks: createJobLocks(), logger });
-  searchSync.start();
+  const searchSync = searchIndex
+    ? createSearchSyncJob({ searchIndex, jobLocks: createJobLocks(), logger })
+    : null;
+  searchSync?.start();
 
   // Phase 5 jobs share the HTTP handlers' service instances and are lease-guarded (D17).
   const paymentServices = app.get('paymentServices');
   const { refundsService, settlementsService, reconciliationService } = app.get('phase6Services');
   const jobs = [
-    searchSync,
     createReservationReleaseJob({ ...paymentServices, jobLocks: createJobLocks(), logger }),
     createReconcilePendingJob({
       ...paymentServices,
@@ -139,7 +143,8 @@ async function main() {
     createSettlementReleaseJob({ settlementsService, jobLocks: createJobLocks(), logger }),
     createReconciliationJob({ reconciliationService, jobLocks: createJobLocks(), logger }),
   ];
-  jobs.slice(1).forEach((job) => job.start());
+  jobs.forEach((job) => job.start());
+  if (searchSync) jobs.push(searchSync); // already started above; only needs stopping at shutdown
 
   let closing = false;
   const shutdown = (signal) => {
@@ -149,7 +154,7 @@ async function main() {
     logger.info({ signal }, 'Shutting down');
     setTimeout(() => process.exit(1), 10_000).unref();
     server.close(async () => {
-      await Promise.allSettled([disconnectMongo(), redis.disconnect(), es.close()]);
+      await Promise.allSettled([disconnectMongo(), redis.disconnect(), es?.close()]);
       process.exit(0);
     });
     server.closeIdleConnections();

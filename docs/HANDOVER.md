@@ -1,54 +1,67 @@
 # HANDOVER.md
 
-## Current state (after Phase 8: Admin console and analytics)
+## Current state (after Phase 9: Hardening and deployment, code and docs)
 
-Phase 8 code is implemented and **verified by automated tests in the assistant's sandbox only** (not yet run on the owner's machine; no browser check). Phase 6's accepted **D57 vendor-debit formula is now implemented and tested** (it was the open follow-up). The admin console covers analytics (cards, GMV chart, top vendors/products), orders (list, detail, refund form, early release), vendors, products (suspend/restore), reviews (hide/publish), platform coupons (create, enable/disable) and settlements (release, reconciliation). Phase 9 (hardening/deployment) is next and has not been started.
+Phase 9 code, tests and docs are delivered; **deployment and the checks that need your hosts are not done**. Before Phase 9 you reported that all server and client tests pass and that `npm audit` shows 0 vulnerabilities at the root, in `client/` and in `server/`. The Phase 9 changes below were verified only partly in the assistant's sandbox (see Verification). Admin console browser check (Phase 8) is still outstanding.
+
+What changed: Elasticsearch is optional (D70); the production config refuses the `.env.example` JWT placeholder; CI fails on high/critical `npm audit` findings; Vercel rewrite and Render Blueprint added (D68, D69); a load smoke script, a demo-data script (D72) and a rate-limit/proxy test (D71) added; `seed:admin` (missing from `server/package.json`) added; README rewritten; DEPLOYMENT and SECURITY_CHECKLIST written.
 
 ## Decisions
 
-D57 implemented (see DECISIONS). **D64-D67 are Proposed and need the owner's review:** D64 what analytics count (paid orders by `placedAt`, UTC, inclusive days; gross GMV with refunds beside it; top products exclude cancelled sub-orders; reviews not counted); D65 product moderation (`suspended` / back to `draft` only); D66 admin reads added beyond the contract (`GET /admin/products`, `GET /admin/reviews`; no separate refunds list; `/admin/users` not built); D67 analytics queries, 5-minute TTL cache, speed, and the consequence that the time series has orders and GMV only.
+**D68-D72 are Proposed and need your review:** D68 hosts (Vercel, Render, Atlas M0, Upstash, S3, Razorpay test); D69 V5 resolved by a same-origin rewrite, `TRUST_PROXY=2`; D70 optional Elasticsearch with a no-op outbox when unset; D71 rate limits unchanged but pinned by tests; D72 demo data through the HTTP API. Earlier Proposed items D64-D67 (Phase 8) still await your review.
 
 ## Relevant files
 
-New (server): `src/modules/admin/` `admin.{validator,service,controller,routes}.js`, `analytics.service.js`. New tests: `analytics.test.js`, `admin.test.js`, `adminAudit.test.js`, `phase8.helpers.js`.
-New (client): `src/lib/admin.js` (+ `admin.test.js`), `src/admin/` (`AdminLayout`, `AdminAnalyticsPage`, `AdminOrdersPage`, `AdminOrderPage`, `AdminVendorsPage`, `AdminProductsPage`, `AdminReviewsPage`, `AdminCouponsPage`, `AdminSettlementsPage`, `charts.jsx`, `Pager.jsx`, `hooks.js`, `admin.css`).
-Changed: `src/lib/refunds.js` and `src/modules/refunds/refunds.service.js` (D57); `src/app.js` (wiring); `src/config/constants.js` (`ANALYTICS`, `ADMIN_PRODUCT_TRANSITIONS`, analytics cache key/TTL); `orders.model.js`, `reviews.model.js` (one index each); `tests/phase6.unit.test.js`, `tests/refunds.test.js`, `tests/rbac.test.js`; client `App.jsx` (admin routes), `components/Layout.jsx` (Admin link). Docs: DECISIONS, API_CONTRACTS, DATABASE_SCHEMA, IMPLEMENTATION_PLAN, TESTING, this file.
+New: `docs/DEPLOYMENT.md`, `docs/SECURITY_CHECKLIST.md`, `render.yaml`, `client/vercel.json`, `server/src/scripts/{demoData,seedDemo,smoke}.js`, tests `server/tests/{optionalSearch,proxyRateLimit,demoData,seedDemo,smoke}.test.js`.
+Changed (server): `src/config/env.js`, `src/server.js`, `src/app.js` (`searchOutboxEnabled`), `src/modules/search/search.outbox.js`, `src/scripts/reindex.js`, `package.json` (scripts `seed:admin`, `seed:demo`, `smoke`; devDependency `autocannon`), `tests/env.test.js`, `.env.example`.
+Changed (root/client): `package.json` (scripts `audit`, `seed:admin`, `seed:demo`, `smoke`), `.github/workflows/ci.yml` (audit step), `client/.env.example`, `README.md`. Docs: DECISIONS, IMPLEMENTATION_PLAN, TESTING, this file.
 
 ## API changes
 
-New: `GET /admin/products`, `PATCH /admin/products/:productId/status`, `GET /admin/reviews`, `GET /admin/orders`, `GET /admin/orders/:orderId`, `GET /admin/analytics/{overview,sales-timeseries,top-vendors,top-products}` (shapes in API_CONTRACTS "Phase 8"). New audit action `product.status_changed`. Behaviour change (D57): `vendorDebitPaise` of a refund is now proportional to the actual vendor payout (differs from the old value only under platform-funded coupons).
+None. Behaviour change: with `ELASTICSEARCH_URL` unset, `POST /admin/search/reindex` answers 503 and `/health/ready` has no `elasticsearch` component.
 
 ## Schema changes
 
-No new collection or field. Indexes added: `orders {paymentStatus:1, placedAt:-1}`, `reviews {status:1, createdAt:-1}`.
+None.
 
 ## Environment variables
 
-None new.
+`ELASTICSEARCH_URL` is now **optional** (unset or empty = Mongo fallback, D70). In production `JWT_ACCESS_SECRET` may not start with `change-me`. Script-only variables: `SEED_API_URL` (seed:demo, default `http://localhost:4000/api/v1`), `ADMIN_SEED_*` (also read by seed:demo), `SMOKE_URL`, `SMOKE_CONNECTIONS`, `SMOKE_DURATION` (smoke). Production requires `PAYMENT_PROVIDER=razorpay` with the three Razorpay variables (unchanged rule).
 
 ## Commands
 
 ```
-npm install
-npm run lint && npx prettier --check .
-npm test -w server           # needs a MongoDB replica-set binary (MONGOMS_SYSTEM_BINARY=/path/to/mongod)
-npm test -w client && npm run build -w client
+npm install                  # installs the new devDependency (autocannon); commit the updated package-lock.json files
+npm run lint && npm run format:check
+npm test
+npm run build
+npm run audit
+npm run seed:admin && npm run seed:demo     # API running
+TRUST_PROXY=1 npm run dev:server            # then, in another terminal: npm run smoke
 ```
 
-## Verification (what was actually run, in the assistant's sandbox, MongoDB 8.3.7)
+## Verification (what was actually run)
 
-Server: 956 passed, 1 failed (below, pre-existing). Client: 143 passed; production build OK. ESLint: 1 error, pre-existing. Analytics speed on 10,000 seeded orders (median of 5 runs): overview 136 ms, time series 117 ms, top vendors 302 ms, top products 154 ms; please re-measure on your machine.
-**Not verified:** the admin console in a browser; real Razorpay behaviour (A6, A11-A13 unchanged); results on your machine.
+Sandbox (Node 22.23, packages installed fresh from the uploaded package.json files, **no MongoDB, and the uploaded zip lacked many source files** such as `jobs/` and the catalog models, so the full server suite could not be run):
 
-## Known issues
+- ESLint and Prettier (`--check`) on the uploaded files and every file changed here: clean.
+- Passed: `env.test.js` `parseEnv` group (17 tests, including the two new ones), `proxyRateLimit.test.js` (5), `demoData.test.js` (5), `seedDemo.test.js` (2, against an in-memory fake API), `smoke.test.js` (4), `logger.test.js`.
+- The smoke script ran for 4 s against a throwaway local HTTP server: 72,866 requests, 0 errors, exit 0. This checks the script, not your API.
+- **Not run:** `env.test.js` "server boot" group and `optionalSearch.test.js` (they import files missing from the zip), the rest of the server suite, the client suite and build, anything against Mongo/Redis/Elasticsearch/S3/Razorpay, any deployment, the real smoke test, the timed fresh-clone check, README screenshots.
+- Please run `npm install && npm run lint && npm run format:check && npm test && npm run build` on your machine and tell me the result before trusting the new code.
 
-- **Pre-existing, not caused by Phase 8:** `reviews.test.js` "works inside 30 days and is 409 edit_window_closed after" fails here: the test's helper tries to back-date `createdAt`, which Mongoose 9.11.4 treats as immutable. Adding `overwriteImmutable: true` to that `updateOne` makes all 38 review tests pass (verified, then reverted: not changed).
-- **Pre-existing:** ESLint reports an unused `api` import in `tests/invoices.test.js`; `prettier --check` flags 13 files of the uploaded snapshot (Phase 7 files and some docs), although HANDOVER reported it passing.
-- The time series has no commission/refund per day (D67). Analytics are up to 5 minutes old (TTL only).
-- Admin `refundablePaise` mirrors the refund endpoint's rules for display only; users list/suspend (`/admin/users`) is not built.
-- Product restore returns to `draft`, not to the previous status (D65).
+## Known issues and security notes
 
-## Next-phase prerequisites (Phase 9: Hardening and deployment)
+- `seed:demo` request bodies follow API_CONTRACTS, but the category body (`{ name, parentId? }`) and the field names it reads from responses (`id`, `status` on the shop profile) are assumptions: if a call is rejected the script prints the API's validation details and only that request needs changing.
+- Demo accounts share one public password (`demoData.js`): demo databases only. Use your own `ADMIN_SEED_PASSWORD`.
+- Free Render sleeps, so the in-process jobs (D17) pause; checkout on the deployed site needs a working Razorpay test setup (the deferred manual runs, TESTING section 4).
+- `TRUST_PROXY=2` and the Vercel rewrite are unverified on the real hosts (DEPLOYMENT step 7). The global limit of 300 per 15 minutes per IP is tight for people sharing one address (D71).
+- Items marked Open in `docs/SECURITY_CHECKLIST.md` (validators' `.strict()`, S3 presign constraints, webhook signature code) were not re-reviewed.
+- Carried over: Phase 8 console not checked in a browser; D67 per-day commission (`paidAt` on sub-orders) not built; `/admin/users` not built.
 
-- Owner review of D64-D67; run the checks above on your machine and click through the console.
-- Phase 9 items from IMPLEMENTATION_PLAN (npm audit, rate limits, deploy, README). Consider Phase 9: a denormalized `paidAt` on sub-orders if per-day commission is wanted; the manual Razorpay test-mode script (TESTING section 4) is still outstanding.
+## Next steps (owner-run, then review)
+
+1. Run the commands above; review D68-D72 and D64-D67.
+2. Deploy following `docs/DEPLOYMENT.md`; record each result in `TESTING.md` and here.
+3. Run `npm run smoke` (local API, `TRUST_PROXY=1`), time a fresh clone, add README screenshots.
+4. Complete the Razorpay test-mode runs (Phases 5 and 6) so checkout can be demonstrated.

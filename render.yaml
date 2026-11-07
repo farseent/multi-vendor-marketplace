@@ -1,0 +1,33 @@
+# Render Blueprint for the API (D68). The frontend is a separate Vercel project (client/vercel.json).
+# Secrets are marked `sync: false`: Render asks for them in the dashboard; never put them here.
+services:
+  - type: web
+    name: marketplace-api
+    runtime: node
+    plan: free
+    region: singapore
+    # Installs only the server workspace (and the root), not the React app.
+    buildCommand: npm ci --omit=dev --workspace=@marketplace/server
+    startCommand: npm run start --workspace=@marketplace/server
+    # Liveness, not readiness: a database blip must not make Render restart a healthy process.
+    healthCheckPath: /health
+    envVars:
+      - { key: NODE_VERSION, value: '22' }
+      - { key: NODE_ENV, value: production }
+      - { key: LOG_LEVEL, value: info }
+      - { key: TRUST_PROXY, value: '2' } # Render + Vercel rewrite; verify (docs/DEPLOYMENT.md step 7)
+      - { key: COOKIE_SAME_SITE, value: lax } # same-origin through the Vercel rewrite (D69)
+      - { key: PAYMENT_PROVIDER, value: razorpay } # the mock ledger is refused in production
+      - { key: PLATFORM_COMMISSION_BPS, value: '1000' }
+      - { key: MONGODB_URI, sync: false }
+      - { key: REDIS_URL, sync: false } # rediss://... from Upstash
+      - { key: CORS_ORIGINS, sync: false } # exactly the Vercel origin, e.g. https://shop.vercel.app
+      - { key: JWT_ACCESS_SECRET, sync: false }
+      - { key: RAZORPAY_KEY_ID, sync: false }
+      - { key: RAZORPAY_KEY_SECRET, sync: false }
+      - { key: RAZORPAY_WEBHOOK_SECRET, sync: false }
+      - { key: S3_BUCKET, sync: false }
+      - { key: S3_REGION, sync: false }
+      - { key: AWS_ACCESS_KEY_ID, sync: false }
+      - { key: AWS_SECRET_ACCESS_KEY, sync: false }
+      # ELASTICSEARCH_URL is intentionally absent: the demo runs on the Mongo fallback (D70).

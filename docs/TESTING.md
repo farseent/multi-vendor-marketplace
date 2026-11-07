@@ -76,8 +76,16 @@ Generated from the registered route table: for each route × role (anonymous, cu
 
 - [ ] Standard error envelope + requestId on all errors; no stack traces in production mode
 - [ ] Health endpoints report degraded (not down) when ES/Redis are off
-- [ ] Smoke load: 50 users / 2 min, error rate < 1%
-- [ ] Fresh-clone setup ≤ 15 min
+- [ ] Smoke load: 50 users / 2 min, error rate < 1% _(`npm run smoke` against a local API with `TRUST_PROXY=1`; script written and its error-rate logic unit-tested in Phase 9; **not run against the real API**)_
+- [ ] Fresh-clone setup ≤ 15 min _(README updated in Phase 9; **not timed**)_
+
+### Deployment (Phase 9, all owner-run, **not run**)
+
+- [ ] Deployed frontend logs in and refreshes through the Vercel rewrite (reload the page after login: still signed in)
+- [ ] CORS rejects a foreign origin on the deployed API (`DEPLOYMENT.md`, `SECURITY_CHECKLIST.md`)
+- [ ] The `ip` stored on a refresh-token record equals your public IP (`TRUST_PROXY` correct, D69)
+- [ ] Deployed search works without Elasticsearch (`X-Search-Fallback: mongo`), `/health/ready` reports `ok`
+- [ ] `npm audit` clean at the root, `client/` and `server/` _(reported 0 vulnerabilities on 2026-11-07; CI now enforces high/critical)_
 
 ## 4. Manual test-mode payment script (run after V1-V3 are resolved)
 

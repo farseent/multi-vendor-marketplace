@@ -38,7 +38,12 @@ const fields = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   MONGODB_URI: uri(['mongodb', 'mongodb\\+srv'], 'mongodb:// or mongodb+srv:// URI'),
   REDIS_URL: uri(['redis', 'rediss'], 'redis:// or rediss:// URL'),
-  ELASTICSEARCH_URL: uri(['http', 'https'], 'http(s):// URL'),
+  // Optional (D70): when unset the API runs on the Mongo search fallback (D12) and no search
+  // outbox/sync job is used. Local development and Docker Compose keep Elasticsearch.
+  ELASTICSEARCH_URL: z.preprocess(
+    emptyIsUnset,
+    uri(['http', 'https'], 'http(s):// URL').optional(),
+  ),
   CORS_ORIGINS: origins,
 
   // --- Phase 1: auth ---
@@ -94,6 +99,14 @@ const schema = fields
     path: ['S3_REGION'],
     message: 'is required when S3_BUCKET is set',
   })
+  // The value in .env.example is long enough to pass the length rule, so production must refuse it.
+  .refine(
+    (env) => !(env.NODE_ENV === 'production' && env.JWT_ACCESS_SECRET.startsWith('change-me')),
+    {
+      path: ['JWT_ACCESS_SECRET'],
+      message: 'must be a generated secret, not the .env.example placeholder',
+    },
+  )
   .refine((env) => !(env.PAYMENT_PROVIDER === 'mock' && env.NODE_ENV === 'production'), {
     path: ['PAYMENT_PROVIDER'],
     message: 'must be razorpay in production (the mock ledger is for development and tests)',

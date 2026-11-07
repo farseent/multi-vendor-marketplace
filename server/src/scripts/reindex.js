@@ -16,6 +16,11 @@ try {
   process.exit(1);
 }
 
+if (!env.ELASTICSEARCH_URL) {
+  console.error('ELASTICSEARCH_URL is not set: there is no index to rebuild');
+  process.exit(1);
+}
+
 const logger = createLogger({ level: env.LOG_LEVEL, nodeEnv: env.NODE_ENV });
 const es = createEsClient({ url: env.ELASTICSEARCH_URL });
 let exitCode = 0;

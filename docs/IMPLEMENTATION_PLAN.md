@@ -141,3 +141,5 @@ Acceptance:
 - Deployed frontend talks to deployed backend with working login/refresh (V5 resolved), CORS allows only the frontend origin.
 - Full acceptance checklist in TESTING.md passes; k6/autocannon smoke (50 concurrent users, 2 min) shows error rate < 1%.
 - README lets a new developer run the project locally in under 15 minutes (timed).
+
+**Status (Phase 9): code, tests and docs delivered on 2026-11-07; deployment and its checks are owner-run and not yet done** (D68-D72 proposed). Automated evidence: `env.test.js` (optional Elasticsearch, placeholder secret), `optionalSearch.test.js`, `proxyRateLimit.test.js`, `demoData.test.js`, `seedDemo.test.js`, `smoke.test.js`. Open acceptance items: the deployed login/refresh check (V5), the smoke run (50 users, 2 min, under 1% errors), the full `TESTING.md` checklist, and the timed fresh-clone setup. The CI audit step is in place; `npm audit` reported 0 findings on your machine.

@@ -11,7 +11,8 @@ const VALID = {
   CORS_ORIGINS: 'http://localhost:5173, https://shop.example.com',
   JWT_ACCESS_SECRET: 'unit-test-secret-unit-test-secret-1234',
 };
-const REQUIRED = Object.keys(VALID);
+// Elasticsearch is optional since D70, so it is not part of the required list.
+const REQUIRED = Object.keys(VALID).filter((key) => key !== 'ELASTICSEARCH_URL');
 const serverRoot = fileURLToPath(new URL('..', import.meta.url));
 const BOOT_TEST_TIMEOUT = 45_000;
 
@@ -21,6 +22,31 @@ describe('parseEnv', () => {
     expect(env.PORT).toBe(4000);
     expect(env.LOG_LEVEL).toBe('info');
     expect(env.CORS_ORIGINS).toEqual(['http://localhost:5173', 'https://shop.example.com']);
+  });
+
+  it('treats ELASTICSEARCH_URL as optional: missing or empty means search uses the Mongo fallback', () => {
+    const withoutEs = { ...VALID };
+    delete withoutEs.ELASTICSEARCH_URL;
+    expect(parseEnv(withoutEs).ELASTICSEARCH_URL).toBeUndefined();
+    expect(parseEnv({ ...VALID, ELASTICSEARCH_URL: '' }).ELASTICSEARCH_URL).toBeUndefined();
+    expect(parseEnv(VALID).ELASTICSEARCH_URL).toBe('http://localhost:9200');
+  });
+
+  it('refuses the .env.example JWT placeholder in production only', () => {
+    const placeholder = 'change-me-to-a-long-random-string-32chars-min';
+    const prod = {
+      ...VALID,
+      NODE_ENV: 'production',
+      PAYMENT_PROVIDER: 'razorpay',
+      RAZORPAY_KEY_ID: 'rzp_test_x',
+      RAZORPAY_KEY_SECRET: 'secret',
+      RAZORPAY_WEBHOOK_SECRET: 'whsec',
+    };
+    expect(() => parseEnv({ ...prod, JWT_ACCESS_SECRET: placeholder })).toThrow(
+      'JWT_ACCESS_SECRET',
+    );
+    expect(parseEnv({ ...prod, JWT_ACCESS_SECRET: 'x'.repeat(48) }).NODE_ENV).toBe('production');
+    expect(parseEnv({ ...VALID, JWT_ACCESS_SECRET: placeholder }).NODE_ENV).toBe('test');
   });
 
   it('applies the Phase 1 auth defaults', () => {

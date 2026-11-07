@@ -84,7 +84,8 @@ import { createUsersService } from './modules/users/users.service.js';
  * `storage` is optional too ({ publicUrl, presignPut }, see lib/s3.js): without it image
  * uploads answer 503 and image URLs are null.
  * `searchIndex` is optional too (see modules/search/search.index.js): without it search answers
- * from the Mongo fallback and the reindex endpoint answers 503.
+ * from the Mongo fallback and the reindex endpoint answers 503. `searchOutboxEnabled: false`
+ * (no Elasticsearch configured, D70) makes the outbox a no-op so it cannot grow unbounded.
  * `paymentProvider` is required (see providers/payment/PaymentProvider.js): the Razorpay adapter or
  * the MockLedger. `platformCommissionBps` is the D6/D51 default rate.
  */
@@ -97,6 +98,7 @@ export function createApp({
   redis = null,
   storage = null,
   searchIndex = null,
+  searchOutboxEnabled = true,
   paymentProvider,
   platformCommissionBps = 1000,
   trustProxy = 0,
@@ -144,7 +146,7 @@ export function createApp({
   const audit = createAuditService();
   // --- Phase 3: search + caching ---
   const cache = createCache({ redis, logger });
-  const searchOutbox = createSearchOutbox();
+  const searchOutbox = createSearchOutbox({ enabled: searchOutboxEnabled });
   const searchService = createSearchService({ searchIndex, cache, storage, logger });
   const reindexer = createReindexer({ searchIndex, jobLocks: createJobLocks(), logger });
 
