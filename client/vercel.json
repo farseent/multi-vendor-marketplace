@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://REPLACE-WITH-YOUR-BACKEND.onrender.com/api/:path*"
+      "destination": "https://marketplace-api-x5i8.onrender.com"
     },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
